@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 var URL = "https://ustore.ps/login/api/";
 var URL_LOGIN = URL + "login";
-var URL_SHIPMENTS = URL + "orders_talabat";
-var URL_SHIPMENTS_STATUS = URL + "filter_shipment_by_status";
+var URL_SHIPMENTS = URL + "get_orders_depend_on_salesman_id";
+var URL_SHIPMENTS_STATUS = URL + "filter_shipment_by_status_by_salesman";
 var URL_MOBILE = URL + "consignee/oauth/token";
 var URL_VERIFICATION_CODE = URL + "oauth/token";
 var URL_NOTIFICATIONS = URL + "resources/user-notifications";

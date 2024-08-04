@@ -1,81 +1,199 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:optimus_opost/Constants/constants.dart';
+import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
 import 'package:optimus_opost/Pages/notifications/notifications.dart';
 import 'package:optimus_opost/Pages/shipment_detail/shipment_detail.dart';
 import 'package:optimus_opost/Server/server.dart';
 import 'package:optimus_opost/main.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../Server/functions.dart';
 import '../search_dialog/search_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 
 class Shipments extends StatefulWidget {
-  const Shipments({super.key});
+  final String status;
+
+  const Shipments({
+    super.key,
+    required this.status,
+  });
 
   @override
   State<Shipments> createState() => _ShipmentsState();
 }
 
 class _ShipmentsState extends State<Shipments> {
-  @override
   bool searchCheck = false;
   List<bool> clicked = [true, false, false, false, false, false];
   TextEditingController searchController = TextEditingController();
+  String salesmanId = "";
+  bool isLoading = false;
+  late StreamController<List<dynamic>> _streamController;
+  Timer? _timer;
+  bool status = false;
+  String driverSerial = "";
+  String driverName = "";
+  @override
+  void initState() {
+    super.initState();
+    _streamController = StreamController<List<dynamic>>();
+    status = widget.status == "true" ? true : false;
+    loadData();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _streamController.close();
+    super.dispose();
+  }
+
+  Future<void> loadData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      salesmanId = prefs.getString('salesmanId') ?? "";
+      driverName = prefs.getString('driver_name') ?? "";
+      driverSerial = prefs.getString('driver_serial') ?? "";
+    });
+    await fetchShipments(false);
+    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      fetchShipments(false);
+    });
+  }
+
+  Future<void> fetchShipments(bool fromChange) async {
+    if (fromChange) {
+      setState(() {
+        isLoading = true;
+      });
+    }
+    try {
+      var response = await getRequest(clicked[0]
+          ? "$URL_SHIPMENTS/$salesmanId"
+          : clicked[1]
+              ? "$URL_SHIPMENTS_STATUS/pending/$salesmanId"
+              : clicked[2]
+                  ? "$URL_SHIPMENTS_STATUS/in_progress/$salesmanId"
+                  : clicked[3]
+                      ? "$URL_SHIPMENTS_STATUS/delivered/$salesmanId"
+                      : clicked[4]
+                          ? "$URL_SHIPMENTS_STATUS/returned/$salesmanId"
+                          : "$URL_SHIPMENTS_STATUS/canceled/$salesmanId");
+
+      if (response != null && response["orders"] is List) {
+        _streamController.add(response["orders"]);
+      } else {
+        _streamController.add([]);
+      }
+    } catch (e) {
+      _streamController.addError('Failed to load shipments');
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> changeOrderStatus(String orderId, String status) async {
+    setState(() {
+      isLoading = true;
+    });
+    try {
+      final response = await http.post(
+        Uri.parse('https://ustore.ps/login/api/change_order_status'),
+        headers: <String, String>{'Content-Type': 'application/json'},
+        body:
+            jsonEncode(<String, String>{'order_id': orderId, 'status': status}),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await fetchShipments(true);
+      } else {
+        throw Exception('Failed to change order status');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Error changing order status');
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  void updateSalesmanStatus(bool status) async {
+    final response = await http.put(
+      Uri.parse('https://ustore.ps/login/api/drivers/$salesmanId'),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'active': status.toString(),
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      // Handle successful response
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('status', status.toString());
+      print('Status updated successfully');
+    } else {
+      // Handle error response
+      print('Failed to update status');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     List<String> status = [
-      AppLocalizations.of(context)!.all,
-      AppLocalizations.of(context)!.under_processing,
+      "الكل",
+      "قيد المعالجة",
       "جاهز للتسليم",
-      AppLocalizations.of(context)!.delivered,
-      AppLocalizations.of(context)!.returned,
-      AppLocalizations.of(context)!.cancelled,
+      "تم التسليم",
+      "مرجع",
+      "ملغي",
     ];
 
     return Container(
       color: MAINCOLOR,
       child: SafeArea(
         child: Scaffold(
+          drawer: _buildDrawer(),
+          appBar: AppBar(
+            centerTitle: true,
+            backgroundColor: MAINCOLOR,
+            iconTheme: const IconThemeData(
+              color: Colors.white,
+            ),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(25),
+                bottomRight: Radius.circular(25),
+              ),
+            ),
+            title: Text(
+              AppLocalizations.of(context)!.shipments,
+              style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                color: Colors.white,
+              ),
+            ),
+            actions: [
+              notificationCard(count: 0),
+            ],
+          ),
           body: SingleChildScrollView(
             child: Column(
               children: [
-                Container(
-                  height: 70,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                      color: MAINCOLOR,
-                      borderRadius: BorderRadius.only(
-                          bottomLeft: Radius.circular(25),
-                          bottomRight: Radius.circular(25))),
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 15, left: 15),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              width: 20,
-                            ),
-                            Text(
-                              AppLocalizations.of(context)!.shipments,
-                              style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 22,
-                                  color: Colors.white),
-                            ),
-                            NotificationCard(count: 0)
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
                 Padding(
                   padding: const EdgeInsets.only(top: 15),
-                  child: Container(
+                  child: SizedBox(
                     height: 40,
                     child: Padding(
                       padding: const EdgeInsets.only(left: 10),
@@ -91,27 +209,13 @@ class _ShipmentsState extends State<Shipments> {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: 50),
-                  child: FutureBuilder(
-                      future: searchCheck
-                          ? filterShipmentsTrackingNumber(searchController.text)
-                          : clicked[0]
-                              ? getRequest(URL_SHIPMENTS)
-                              : clicked[1]
-                                  ? getRequest("$URL_SHIPMENTS_STATUS/pending")
-                                  : clicked[2]
-                                      ? getRequest(
-                                          "$URL_SHIPMENTS_STATUS/delivered")
-                                      : clicked[3]
-                                          ? getRequest(
-                                              "$URL_SHIPMENTS_STATUS/returned")
-                                          : clicked[4]
-                                              ? getRequest(
-                                                  "$URL_SHIPMENTS_STATUS/canceleed")
-                                              : "all",
+                  child: StreamBuilder(
+                      stream: _streamController.stream,
                       builder: (context, AsyncSnapshot snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return Container(
+                        if (isLoading ||
+                            snapshot.connectionState ==
+                                ConnectionState.waiting) {
+                          return SizedBox(
                             width: double.infinity,
                             height: MediaQuery.of(context).size.height * 0.4,
                             child: SpinKitPulse(
@@ -119,66 +223,84 @@ class _ShipmentsState extends State<Shipments> {
                               size: 60,
                             ),
                           );
+                        } else if (snapshot.hasError) {
+                          return Center(
+                            child: Text('Error: ${snapshot.error}'),
+                          );
+                        } else if (!snapshot.hasData || snapshot.data.isEmpty) {
+                          return SizedBox(
+                            width: double.infinity,
+                            height: MediaQuery.of(context).size.height * 0.7,
+                            child: const Center(
+                              child: Text(
+                                "لا يوجد شحنات",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17,
+                                ),
+                              ),
+                            ),
+                          );
                         } else {
-                          var shipments = [];
-                          shipments = snapshot.data["orders"];
-                          if (shipments.length == 0) {
-                            return Container(
-                                width: double.infinity,
-                                height:
-                                    MediaQuery.of(context).size.height * 0.7,
-                                child: Center(
-                                    child: Text(
-                                  "لا يوحد شحنات",
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 17),
-                                )));
-                          } else {
-                            return ListView.builder(
-                                physics: NeverScrollableScrollPhysics(),
-                                shrinkWrap: true,
-                                itemCount: shipments.length,
-                                itemBuilder: (context, int index) {
-                                  return ShipmentCard(
-                                    tracking_number:
-                                        shipments[index]["id"].toString(),
-                                    id: shipments[index]["id"] ?? 1,
-                                    lattitude: shipments[index]["lattitude"]
-                                        .toString(),
-                                    longitude: shipments[index]["longitude"]
-                                        .toString(),
-                                    quantity:
-                                        shipments[index]["items_length"] ?? 0,
-                                    from: shipments[index]["restaurant"]
-                                            ["name"] ??
+                          var shipments = snapshot.data;
+                          return ListView.builder(
+                            physics: const NeverScrollableScrollPhysics(),
+                            shrinkWrap: true,
+                            itemCount: shipments.length,
+                            itemBuilder: (context, int index) {
+                              return ShipmentCard(
+                                tracking_number:
+                                    shipments[index]["id"].toString(),
+                                id: shipments[index]["id"] ?? 1,
+                                lattitude:
+                                    shipments[index]["lattitude"].toString(),
+                                longitude:
+                                    shipments[index]["longitude"].toString(),
+                                quantity: shipments[index]["items_length"] ?? 0,
+                                from: shipments[index]["restaurant"] == null
+                                    ? "-"
+                                    : shipments[index]["restaurant"]["name"] ??
                                         "-",
-                                    to: shipments[index]["customer_name"] ??
+                                to: shipments[index]["customer_name"] ?? "-",
+                                status: shipments[index]["status"] ?? "-",
+                                productsArray: shipments[index]["items"] ?? "-",
+                                type: shipments[index]["type"] ?? "-",
+                                business_name: shipments[index]["restaurant"] ==
+                                        null
+                                    ? "-"
+                                    : shipments[index]["restaurant"]["name"] ??
                                         "-",
-                                    status: shipments[index]["status"] ?? "-",
-                                    productsArray: shipments[index]
-                                            ["order_details"] ??
-                                        "-",
-                                    type: shipments[index]["type"] ?? "-",
-                                    business_name: shipments[index]
-                                            ["restaurant"]["name"] ??
-                                        "-",
-                                    business_phone: shipments[index]
-                                            ["restaurant"]["phone_number"] ??
-                                        "-",
-                                    consignee_name: shipments[index]
-                                            ["customer_name"] ??
-                                        "-",
-                                    consignee_phone1:
-                                        shipments[index]["mobile"] ?? "-",
-                                    consignee_phone2:
-                                        shipments[index]["mobile"] ?? "-",
-                                    items_description: "-",
-                                    cod_amount: double.parse(
-                                        shipments[index]["total"].toString()),
-                                  );
-                                });
-                          }
+                                business_phone:
+                                    shipments[index]["restaurant"] == null
+                                        ? "-"
+                                        : shipments[index]["restaurant"]
+                                                ["phone_number"] ??
+                                            "-",
+                                consignee_name:
+                                    shipments[index]["customer_name"] ?? "-",
+                                consignee_phone1:
+                                    shipments[index]["mobile"] ?? "-",
+                                consignee_phone2:
+                                    shipments[index]["mobile"] ?? "-",
+                                items_description: "-",
+                                cod_amount: double.parse(
+                                    shipments[index]["total"].toString()),
+                                createdAt:
+                                    shipments[index]["created_at"] ?? "-",
+                                updatedAt:
+                                    shipments[index]["updated_at"] ?? "-",
+                                customerAdress:
+                                    shipments[index]["address"] ?? "-",
+                                customerNear: shipments[index]["area"] ?? "-",
+                                resturantAdress:
+                                    shipments[index]["restaurant"] == null
+                                        ? "-"
+                                        : shipments[index]["restaurant"]
+                                                ["address"] ??
+                                            "-",
+                              );
+                            },
+                          );
                         }
                       }),
                 ),
@@ -190,16 +312,16 @@ class _ShipmentsState extends State<Shipments> {
     );
   }
 
-  Stack NotificationCard({int count = 0}) {
+  Stack notificationCard({int count = 0}) {
     return Stack(
       alignment: Alignment.topRight,
       children: [
         IconButton(
           onPressed: () {
             Navigator.push(context,
-                MaterialPageRoute(builder: (context) => Notifications()));
+                MaterialPageRoute(builder: (context) => const Notifications()));
           },
-          icon: Icon(
+          icon: const Icon(
             Icons.notifications,
             color: Colors.white,
             size: 35,
@@ -210,17 +332,17 @@ class _ShipmentsState extends State<Shipments> {
           child: Container(
             width: 20,
             height: 20,
+            decoration:
+                const BoxDecoration(shape: BoxShape.circle, color: Colors.red),
             child: Center(
               child: Text(
                 count.toString(),
-                style: TextStyle(
+                style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                     color: Colors.white),
               ),
             ),
-            decoration:
-                BoxDecoration(shape: BoxShape.circle, color: Colors.red),
           ),
         )
       ],
@@ -236,13 +358,14 @@ class _ShipmentsState extends State<Shipments> {
             clicked[i] = false;
           }
           clicked[index] = true;
+          fetchShipments(false);
           setState(() {});
         },
         child: Container(
           height: 40,
           decoration: BoxDecoration(
               border: Border.all(
-                  color: clicked[index] ? MAINCOLOR : Color(0xffDDDDDD)),
+                  color: clicked[index] ? MAINCOLOR : const Color(0xffDDDDDD)),
               borderRadius: BorderRadius.circular(10),
               color: Colors.white),
           child: Padding(
@@ -251,7 +374,8 @@ class _ShipmentsState extends State<Shipments> {
               child: Text(
                 name,
                 style: TextStyle(
-                    color: clicked[index] ? MAINCOLOR : Color(0xffA1A1A1)),
+                    color:
+                        clicked[index] ? MAINCOLOR : const Color(0xffA1A1A1)),
               ),
             ),
           ),
@@ -278,6 +402,11 @@ class _ShipmentsState extends State<Shipments> {
     var productsArray,
     int quantity = 0,
     int id = 0,
+    String createdAt = "",
+    String updatedAt = "",
+    String resturantAdress = "",
+    String customerAdress = "",
+    String customerNear = "",
   }) {
     return Padding(
       padding: const EdgeInsets.only(right: 15, left: 15, top: 15),
@@ -302,13 +431,22 @@ class _ShipmentsState extends State<Shipments> {
                         consignee_phone1: consignee_phone1,
                         consignee_phone2: consignee_phone2,
                         items_description: items_description,
+                        createdAt: createdAt,
+                        updatedAt: updatedAt,
+                        customerAdress: customerAdress,
+                        customerNear: customerNear,
+                        resturantAdress: resturantAdress,
                       )));
         },
         child: Stack(
           alignment: Alignment.centerLeft,
           children: [
             Container(
-              height: 240,
+              height: status == "delivered" ||
+                      status == "canceled" ||
+                      status == "returned"
+                  ? 180
+                  : 240,
               width: double.infinity,
               decoration: BoxDecoration(
                   boxShadow: [
@@ -316,7 +454,7 @@ class _ShipmentsState extends State<Shipments> {
                       color: Colors.grey.withOpacity(0.2),
                       spreadRadius: 5,
                       blurRadius: 7,
-                      offset: Offset(0, 1), // changes position of shadow
+                      offset: const Offset(0, 1),
                     ),
                   ],
                   border: Border(
@@ -327,6 +465,7 @@ class _ShipmentsState extends State<Shipments> {
                   ),
                   color: Colors.white),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Padding(
                     padding:
@@ -336,10 +475,16 @@ class _ShipmentsState extends State<Shipments> {
                       children: [
                         Text(
                           tracking_number,
-                          style: TextStyle(
+                          style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                         Container(
+                          width: 120,
+                          height: 30,
+                          decoration: BoxDecoration(
+                              color: const Color.fromARGB(255, 241, 241, 241),
+                              border:
+                                  Border.all(color: const Color(0xffDDDDDD))),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
@@ -349,14 +494,9 @@ class _ShipmentsState extends State<Shipments> {
                                 fit: BoxFit.cover,
                               ),
                               Text(
-                                  "${quantity} ${AppLocalizations.of(context)!.shipments_card}"),
+                                  "$quantity ${AppLocalizations.of(context)!.shipments_card}"),
                             ],
                           ),
-                          width: 120,
-                          height: 30,
-                          decoration: BoxDecoration(
-                              color: Color.fromARGB(255, 241, 241, 241),
-                              border: Border.all(color: Color(0xffDDDDDD))),
                         )
                       ],
                     ),
@@ -372,19 +512,19 @@ class _ShipmentsState extends State<Shipments> {
                               shape: BoxShape.circle,
                               border: Border.all(color: MAINCOLOR, width: 2)),
                         ),
-                        SizedBox(
+                        const SizedBox(
                           width: 10,
                         ),
                         Text(
                           AppLocalizations.of(context)!.from,
-                          style: TextStyle(fontSize: 16),
+                          style: const TextStyle(fontSize: 16),
                         ),
-                        SizedBox(
+                        const SizedBox(
                           width: 10,
                         ),
                         Text(
                           from,
-                          style: TextStyle(fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
@@ -401,21 +541,21 @@ class _ShipmentsState extends State<Shipments> {
                             shape: BoxShape.circle,
                           ),
                         ),
-                        SizedBox(
+                        const SizedBox(
                           width: 10,
                         ),
                         Text(
                           AppLocalizations.of(context)!.to,
-                          style: TextStyle(fontSize: 16),
+                          style: const TextStyle(fontSize: 16),
                         ),
-                        SizedBox(
+                        const SizedBox(
                           width: 10,
                         ),
-                        Container(
+                        SizedBox(
                           height: 20,
                           child: Text(
-                            to.length > 25 ? to.substring(0, 25) + '...' : to,
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                            to.length > 25 ? '${to.substring(0, 25)}...' : to,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
@@ -427,7 +567,7 @@ class _ShipmentsState extends State<Shipments> {
                     child: Container(
                       width: double.infinity,
                       height: 1,
-                      color: Color.fromARGB(255, 228, 227, 227),
+                      color: const Color.fromARGB(255, 228, 227, 227),
                     ),
                   ),
                   Padding(
@@ -441,7 +581,7 @@ class _ShipmentsState extends State<Shipments> {
                               "assets/money.png",
                               fit: BoxFit.cover,
                             ),
-                            SizedBox(
+                            const SizedBox(
                               width: 10,
                             ),
                             Column(
@@ -450,7 +590,7 @@ class _ShipmentsState extends State<Shipments> {
                                   type.toString() == "load"
                                       ? "ادفع للمطعم"
                                       : "استلم من الزبون",
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                       color: Color(0xff3C3C3C), fontSize: 12),
                                 ),
                                 Text(
@@ -470,204 +610,236 @@ class _ShipmentsState extends State<Shipments> {
                               },
                             );
                           },
-                          child: Row(
-                            children: [
-                              Text(
-                                AppLocalizations.of(context)!.shipment_details,
-                                style: TextStyle(color: MAINCOLOR),
+                          child: Container(
+                            decoration: BoxDecoration(
+                                color: Colors.transparent,
+                                border: Border.all(color: MAINCOLOR)),
+                            width: 150,
+                            child: Padding(
+                              padding: const EdgeInsets.all(8.0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    AppLocalizations.of(context)!
+                                        .shipment_details,
+                                    style: TextStyle(color: MAINCOLOR),
+                                  ),
+                                  const SizedBox(
+                                    width: 10,
+                                  ),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    size: 20,
+                                    color: MAINCOLOR,
+                                  )
+                                ],
                               ),
-                              SizedBox(
-                                width: 10,
-                              ),
-                              Icon(
-                                Icons.arrow_forward_ios,
-                                size: 20,
-                                color: MAINCOLOR,
-                              )
-                            ],
+                            ),
                           ),
                         )
                       ],
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Container(
-                      width: double.infinity,
-                      height: 40,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 1,
-                            child: InkWell(
-                              onTap: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      content: Text(
-                                        "هل تريد بالتأكيد الغاء الطلب ؟ ",
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold),
-                                      ),
-                                      actions: <Widget>[
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceAround,
-                                          children: [
-                                            InkWell(
-                                              onTap: () async {},
-                                              child: Container(
-                                                height: 50,
-                                                width: 100,
-                                                decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                    color: MAINCOLOR),
-                                                child: Center(
-                                                  child: Text(
-                                                    "نعم",
-                                                    style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 15,
-                                                        color: Colors.white),
+                  Visibility(
+                    visible: status == "delivered" ||
+                            status == "canceled" ||
+                            status == "returned"
+                        ? false
+                        : true,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 40,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: InkWell(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return AlertDialog(
+                                        content: const Text(
+                                          "هل تريد بالتأكيد الغاء الطلب ؟ ",
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                        actions: <Widget>[
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceAround,
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  changeOrderStatus(
+                                                      tracking_number,
+                                                      "canceled");
+
+                                                  Navigator.of(context).pop();
+                                                },
+                                                child: Container(
+                                                  height: 50,
+                                                  width: 100,
+                                                  decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                      color: MAINCOLOR),
+                                                  child: const Center(
+                                                    child: Text(
+                                                      "نعم",
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: Colors.white),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ),
-                                            InkWell(
-                                              onTap: () {
-                                                Navigator.pop(context);
-                                              },
-                                              child: Container(
-                                                height: 50,
-                                                width: 100,
-                                                decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                    color: MAINCOLOR),
-                                                child: Center(
-                                                  child: Text(
-                                                    "لا",
-                                                    style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 15,
-                                                        color: Colors.white),
+                                              InkWell(
+                                                onTap: () {
+                                                  Navigator.pop(context);
+                                                },
+                                                child: Container(
+                                                  height: 50,
+                                                  width: 100,
+                                                  decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                      color: MAINCOLOR),
+                                                  child: const Center(
+                                                    child: Text(
+                                                      "لا",
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: Colors.white),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ),
-                                          ],
-                                        )
-                                      ],
-                                    );
-                                  },
-                                );
-                              },
-                              child: Container(
-                                height: 40,
-                                decoration: BoxDecoration(color: Colors.red),
-                                child: Center(
-                                  child: Text(
-                                    "الغاء الطلب",
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
+                                            ],
+                                          )
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                                child: Container(
+                                  height: 40,
+                                  decoration:
+                                      const BoxDecoration(color: Colors.red),
+                                  child: const Center(
+                                    child: Text(
+                                      "الغاء الطلب",
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: InkWell(
-                              onTap: () {
-                                showDialog(
-                                  context: context,
-                                  builder: (BuildContext context) {
-                                    return AlertDialog(
-                                      content: Text(
-                                        "هل تريد بالتأكيد اكتمال الطلب ؟ ",
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold),
-                                      ),
-                                      actions: <Widget>[
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceAround,
-                                          children: [
-                                            InkWell(
-                                              onTap: () async {},
-                                              child: Container(
-                                                height: 50,
-                                                width: 100,
-                                                decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                    color: MAINCOLOR),
-                                                child: Center(
-                                                  child: Text(
-                                                    "نعم",
-                                                    style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 15,
-                                                        color: Colors.white),
+                            Expanded(
+                              flex: 1,
+                              child: InkWell(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return AlertDialog(
+                                        content: const Text(
+                                          "هل تريد بالتأكيد اكتمال الطلب ؟ ",
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                        actions: <Widget>[
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceAround,
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  changeOrderStatus(
+                                                      tracking_number,
+                                                      "delivered");
+
+                                                  Navigator.of(context).pop();
+                                                },
+                                                child: Container(
+                                                  height: 50,
+                                                  width: 100,
+                                                  decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                      color: MAINCOLOR),
+                                                  child: const Center(
+                                                    child: Text(
+                                                      "نعم",
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: Colors.white),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ),
-                                            InkWell(
-                                              onTap: () {
-                                                Navigator.pop(context);
-                                              },
-                                              child: Container(
-                                                height: 50,
-                                                width: 100,
-                                                decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                    color: MAINCOLOR),
-                                                child: Center(
-                                                  child: Text(
-                                                    "لا",
-                                                    style: TextStyle(
-                                                        fontWeight:
-                                                            FontWeight.bold,
-                                                        fontSize: 15,
-                                                        color: Colors.white),
+                                              InkWell(
+                                                onTap: () {
+                                                  Navigator.pop(context);
+                                                },
+                                                child: Container(
+                                                  height: 50,
+                                                  width: 100,
+                                                  decoration: BoxDecoration(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                      color: MAINCOLOR),
+                                                  child: const Center(
+                                                    child: Text(
+                                                      "لا",
+                                                      style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: Colors.white),
+                                                    ),
                                                   ),
                                                 ),
                                               ),
-                                            ),
-                                          ],
-                                        )
-                                      ],
-                                    );
-                                  },
-                                );
-                              },
-                              child: Container(
-                                height: 40,
-                                decoration: BoxDecoration(color: Colors.green),
-                                child: Center(
-                                  child: Text(
-                                    "اكتمال الطلب",
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white),
+                                            ],
+                                          )
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                                child: Container(
+                                  height: 40,
+                                  decoration:
+                                      BoxDecoration(color: Colors.green),
+                                  child: const Center(
+                                    child: Text(
+                                      "اكتمال الطلب",
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white),
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   )
@@ -681,9 +853,10 @@ class _ShipmentsState extends State<Shipments> {
                 children: [
                   Text(
                     type.toString() == "load" ? "تحميل" : "استلام",
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 13),
                   ),
-                  SizedBox(
+                  const SizedBox(
                     width: 15,
                   ),
                   Container(
@@ -703,16 +876,105 @@ class _ShipmentsState extends State<Shipments> {
       ),
     );
   }
+
+  Widget _buildDrawer() {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          DrawerHeader(
+            decoration: BoxDecoration(
+              color: MAINCOLOR,
+            ),
+            child: Column(
+              children: [
+                const Text(
+                  'أهلا و سهلا بكم في تطبيق              J-Food Business',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(
+                  height: 10,
+                ),
+                Image.asset(
+                  "assets/logo.png",
+                  height: 70,
+                ),
+              ],
+            ),
+          ),
+          ListTile(
+            title: Text(driverName,
+                style:
+                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+            trailing: Container(
+              decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: MAINCOLOR)),
+              child: Padding(
+                padding: const EdgeInsets.all(5.0),
+                child: Text("# $driverSerial",
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 18)),
+              ),
+            ),
+          ),
+          Divider(
+            color: MAINCOLOR,
+          ),
+          ListTile(
+            title: Text(status ? "السائق متاح" : "السائق غير متاح",
+                style:
+                    const TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+            trailing: Switch(
+              activeColor: MAINCOLOR,
+              value: status,
+              onChanged: (val) {
+                setState(() {
+                  status = val;
+                });
+                updateSalesmanStatus(val);
+              },
+            ),
+          ),
+          Divider(
+            color: MAINCOLOR,
+          ),
+          ListTile(
+            leading: Icon(
+              Icons.logout,
+              color: MAINCOLOR,
+            ),
+            title: const Text('تسجيل الخروج',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+            onTap: () async {
+              SharedPreferences prefs = await SharedPreferences.getInstance();
+              await prefs.setBool('login', false);
+              Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(
+                    builder: (context) => const LoginScreen(),
+                  ),
+                  (route) => true);
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class ProductDetailsBottomSheet extends StatelessWidget {
   var productsArray, total;
 
-  ProductDetailsBottomSheet({required this.productsArray, required this.total});
+  ProductDetailsBottomSheet(
+      {super.key, required this.productsArray, required this.total});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       height: 400,
       child: Column(
         children: [
@@ -720,7 +982,7 @@ class ProductDetailsBottomSheet extends StatelessWidget {
             padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
             child: Column(
               children: [
-                Row(
+                const Row(
                   children: [
                     Text(
                       "تفاصيل الطلبية",
@@ -733,68 +995,152 @@ class ProductDetailsBottomSheet extends StatelessWidget {
                   children: [
                     Text(
                       "عدد المنتجات : ${productsArray.length} ",
-                      style:
-                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold),
                     ),
-                    SizedBox(
+                    const SizedBox(
                       width: 50,
                     ),
                     Text(
-                      "المجموع الكلي : ${total}",
-                      style:
-                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      "المجموع الكلي : $total",
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           Expanded(
             child: ListView.builder(
               itemCount: productsArray.length,
+              shrinkWrap: true,
               itemBuilder: (context, index) {
                 final product = productsArray[index];
+
                 return Column(
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(8.0),
                       child: Row(
                         children: [
-                          Image.network(
-                            product["product"]['image'],
-                            height: 100,
-                            width: 100,
-                            fit: BoxFit.cover,
+                          Visibility(
+                            visible: product["product"] == null ? false : true,
+                            child: Expanded(
+                              child: Image.network(
+                                product["product"] == null
+                                    ? "-"
+                                    : product["product"]['image'],
+                                height: 100,
+                                width: 100,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
-                          SizedBox(
+                          const SizedBox(
                             width: 10,
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                "أسم المنتج : ${product["product"]['name']}",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                              SizedBox(
-                                height: 5,
-                              ),
-                              Text(
-                                "سعر المنتج : ${product["product"]['price']}",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                              SizedBox(
-                                height: 5,
-                              ),
-                              Text(
-                                "كمية المنتج : ${product['qty']}",
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                            ],
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  product["product"] == null
+                                      ? "-"
+                                      : "أسم المنتج : ${product["product"]['name']}",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14),
+                                ),
+                                const SizedBox(
+                                  height: 5,
+                                ),
+                                Text(
+                                  product["product"] == null
+                                      ? "-"
+                                      : "سعر المنتج : ${product["product"]['price']}",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14),
+                                ),
+                                const SizedBox(
+                                  height: 5,
+                                ),
+                                Text(
+                                  product["product"] == null
+                                      ? "-"
+                                      : "الكمية : ${product['qty']}",
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14),
+                                ),
+                                const SizedBox(
+                                  height: 5,
+                                ),
+                                Text(
+                                  product["product"] == null
+                                      ? "-"
+                                      : "المكونات:",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Visibility(
+                                  visible:
+                                      product["product"] == null ? false : true,
+                                  child: SizedBox(
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: product['components'].length,
+                                      itemBuilder: (context, index) {
+                                        final component =
+                                            product['components'][index];
+                                        return Text(
+                                          "- ${component['com_name']}: ${component['com_price']}.",
+                                          style: const TextStyle(fontSize: 14),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  product["product"] == null
+                                      ? "-"
+                                      : "المشروبات:",
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 5),
+                                Visibility(
+                                  visible:
+                                      product["product"] == null ? false : true,
+                                  child: SizedBox(
+                                    child: ListView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: product['drinks'].length,
+                                      itemBuilder: (context, index) {
+                                        final drink = product['drinks'][index];
+                                        return Text(
+                                          "- ${drink['drink_name']}: ${drink['drink_price']}.",
+                                          style: const TextStyle(fontSize: 14),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           )
                         ],
                       ),
@@ -815,29 +1161,29 @@ class ProductDetailsBottomSheet extends StatelessWidget {
   }
 }
 
-class SearchDialog {
-  void showBottomDialog(BuildContext context) {
-    showGeneralDialog(
-      barrierLabel: "showGeneralDialog",
-      barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.6),
-      transitionDuration: const Duration(milliseconds: 400),
-      context: context,
-      pageBuilder: (context, _, __) {
-        return Align(
-          alignment: Alignment.bottomCenter,
-          child: SearchScreen(),
-        );
-      },
-      transitionBuilder: (_, animation1, __, child) {
-        return SlideTransition(
-          position: Tween(
-            begin: const Offset(0, 1),
-            end: const Offset(0, 0),
-          ).animate(animation1),
-          child: child,
-        );
-      },
-    );
-  }
-}
+// class SearchDialog {
+//   void showBottomDialog(BuildContext context) {
+//     showGeneralDialog(
+//       barrierLabel: "showGeneralDialog",
+//       barrierDismissible: true,
+//       barrierColor: Colors.black.withOpacity(0.6),
+//       transitionDuration: const Duration(milliseconds: 400),
+//       context: context,
+//       pageBuilder: (context, _, __) {
+//         return const Align(
+//           alignment: Alignment.bottomCenter,
+//           child: SearchScreen(),
+//         );
+//       },
+//       transitionBuilder: (_, animation1, __, child) {
+//         return SlideTransition(
+//           position: Tween(
+//             begin: const Offset(0, 1),
+//             end: const Offset(0, 0),
+//           ).animate(animation1),
+//           child: child,
+//         );
+//       },
+//     );
+//   }
+// }

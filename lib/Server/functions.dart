@@ -267,34 +267,34 @@ conigneeMobile(BuildContext context, mob_intro, mobile, trackingNumber) async {
   }
 }
 
-checkVerificationCode(BuildContext context, code, mobile, mobile_intro) async {
-  var response = await http.post(Uri.parse("https://opost.ps/oauth/token"),
-      body: {
-        "client_id": "2",
-        "client_secret": "3OH4gQLbGNJMVvj8lFij0GBO4iUnwNqIFip6hX8l",
-        "mobile": mobile.toString(),
-        "mobile_intro": mobile_intro.toString(),
-        "grant_type": "mobile_otp",
-        "otp_code": code.toString(),
-        "scope": ""
-      },
-      headers: headers);
-  var data = json.decode(response.body);
-  if (data['token_type'] == "Bearer") {
-    Navigator.of(context, rootNavigator: true).pop();
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String token = data['access_token'] ?? "";
-    await prefs.setString('access_token', token);
-    Fluttertoast.showToast(
-      msg: "تم التحقق من الكود بنجاح",
-    );
-    Navigator.push(
-        context, MaterialPageRoute(builder: (context) => Shipments()));
-  } else {
-    Navigator.of(context, rootNavigator: true).pop();
-    Fluttertoast.showToast(msg: "الكود المدخل خطأ , الرجاء المحاوله مره أخرى");
-  }
-}
+// checkVerificationCode(BuildContext context, code, mobile, mobile_intro) async {
+//   var response = await http.post(Uri.parse("https://opost.ps/oauth/token"),
+//       body: {
+//         "client_id": "2",
+//         "client_secret": "3OH4gQLbGNJMVvj8lFij0GBO4iUnwNqIFip6hX8l",
+//         "mobile": mobile.toString(),
+//         "mobile_intro": mobile_intro.toString(),
+//         "grant_type": "mobile_otp",
+//         "otp_code": code.toString(),
+//         "scope": ""
+//       },
+//       headers: headers);
+//   var data = json.decode(response.body);
+//   if (data['token_type'] == "Bearer") {
+//     Navigator.of(context, rootNavigator: true).pop();
+//     SharedPreferences prefs = await SharedPreferences.getInstance();
+//     String token = data['access_token'] ?? "";
+//     await prefs.setString('access_token', token);
+//     Fluttertoast.showToast(
+//       msg: "تم التحقق من الكود بنجاح",
+//     );
+//     Navigator.push(
+//         context, MaterialPageRoute(builder: (context) => Shipments()));
+//   } else {
+//     Navigator.of(context, rootNavigator: true).pop();
+//     Fluttertoast.showToast(msg: "الكود المدخل خطأ , الرجاء المحاوله مره أخرى");
+//   }
+// }
 
 addNote(BuildContext context, note, shipment_id, postponedData) async {
   var response = await http.post(Uri.parse(URL_ADD_NOTE),

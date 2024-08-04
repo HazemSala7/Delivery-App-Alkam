@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:optimus_opost/Server/functions.dart';
-
 import '../../Constants/constants.dart';
 import '../shipment_detail/shipment_detail.dart';
 
@@ -15,59 +12,64 @@ class Notifications extends StatefulWidget {
 class _NotificationsState extends State<Notifications> {
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              height: 100,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                  color: MAINCOLOR,
-                  borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(25),
-                      bottomRight: Radius.circular(25))),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: 30,
+    return Container(
+      color: MAINCOLOR,
+      child: SafeArea(
+        child: Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                Container(
+                  height: 100,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                      color: MAINCOLOR,
+                      borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(25),
+                          bottomRight: Radius.circular(25))),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 30,
+                      ),
+                      const Text(
+                        "التنبيهات",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            color: Colors.white),
+                      ),
+                      IconButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                          },
+                          icon: const Icon(
+                            Icons.arrow_forward_outlined,
+                            size: 25,
+                            color: Colors.white,
+                          ))
+                    ],
                   ),
-                  Text(
-                    "التنبيهات",
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 22,
-                        color: Colors.white),
-                  ),
-                  IconButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      icon: Icon(
-                        Icons.arrow_forward_outlined,
-                        size: 35,
-                        color: Colors.white,
-                      ))
-                ],
-              ),
+                ),
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 20),
+                    child: ListView.builder(
+                        physics: const NeverScrollableScrollPhysics(),
+                        shrinkWrap: true,
+                        itemCount: 1,
+                        itemBuilder: (context, int index) {
+                          return NotificationCard(
+                              title: "عنوان التنبيه",
+                              body: "هذا مثال لاشعار",
+                              id: 0,
+                              name: "shipment.tracking_number",
+                              read: "قبل 2 دقيقه");
+                        })),
+              ],
             ),
-            Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: ListView.builder(
-                    physics: NeverScrollableScrollPhysics(),
-                    shrinkWrap: true,
-                    itemCount: 0,
-                    itemBuilder: (context, int index) {
-                      return NotificationCard(
-                          title: "عنوان التنبيه",
-                          body: "هذا مثال لاشعار",
-                          id: 0,
-                          name: "shipment.tracking_number",
-                          read: "قبل 2 دقيقه");
-                    })),
-          ],
+          ),
         ),
       ),
     );
@@ -102,7 +104,7 @@ class _NotificationsState extends State<Notifications> {
             padding: const EdgeInsets.all(15),
             child: Column(
               children: [
-                Container(
+                SizedBox(
                   height: 40,
                   width: double.infinity,
                   child: Row(
@@ -111,7 +113,7 @@ class _NotificationsState extends State<Notifications> {
                       Row(
                         children: [
                           Container(
-                            decoration: BoxDecoration(
+                            decoration: const BoxDecoration(
                                 color: Color(0xffF1F1F1),
                                 shape: BoxShape.circle),
                             width: 40,
@@ -123,19 +125,19 @@ class _NotificationsState extends State<Notifications> {
                               ),
                             ),
                           ),
-                          SizedBox(
+                          const SizedBox(
                             width: 15,
                           ),
                           Text(
                             title,
-                            style: TextStyle(
+                            style: const TextStyle(
                                 fontWeight: FontWeight.bold, fontSize: 18),
                           )
                         ],
                       ),
                       Text(
                         read,
-                        style: TextStyle(color: Color(0xff999999)),
+                        style: const TextStyle(color: Color(0xff999999)),
                       )
                     ],
                   ),
@@ -148,11 +150,9 @@ class _NotificationsState extends State<Notifications> {
                     ),
                     Expanded(
                       flex: 6,
-                      child: Container(
-                        child: Text(
-                          body,
-                          style: TextStyle(color: Color(0xff666666)),
-                        ),
+                      child: Text(
+                        body,
+                        style: const TextStyle(color: Color(0xff666666)),
                       ),
                     ),
                   ],

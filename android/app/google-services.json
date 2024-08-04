@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "547928555422",
+    "project_id": "j-food-2a4d7",
+    "storage_bucket": "j-food-2a4d7.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:3cf57d8f34cab31c44208f",
+        "android_client_info": {
+          "package_name": "co.perfect.jfoob"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:f1d977c45a6a8ffa44208f",
+        "android_client_info": {
+          "package_name": "jfoob.business.perfect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

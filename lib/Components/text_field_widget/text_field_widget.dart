@@ -27,6 +27,9 @@ class TextFieldWidget extends StatelessWidget {
         child: TextField(
           controller: controller,
           obscureText: false,
+          keyboardType: name == "رقم الهاتف"
+              ? TextInputType.phone
+              : TextInputType.visiblePassword,
           onTap: () {
             onTTap();
           },
@@ -35,7 +38,7 @@ class TextFieldWidget extends StatelessWidget {
             focusedBorder: OutlineInputBorder(
               borderSide: BorderSide(color: MAINCOLOR, width: 2.0),
             ),
-            enabledBorder: OutlineInputBorder(
+            enabledBorder: const OutlineInputBorder(
               borderSide: BorderSide(width: 2.0, color: Color(0xffD6D3D3)),
             ),
             hintText: name,

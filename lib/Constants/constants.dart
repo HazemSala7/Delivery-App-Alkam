@@ -1,4 +1,4 @@
 import 'package:flutter/material.dart';
 
-var MAINCOLOR = Color(0xffFFA630);
+var MAINCOLOR = const Color(0xFFA51E22);
 bool fromto = false;
