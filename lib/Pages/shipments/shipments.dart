@@ -358,7 +358,7 @@ class _ShipmentsState extends State<Shipments> {
             clicked[i] = false;
           }
           clicked[index] = true;
-          fetchShipments(false);
+          fetchShipments(true);
           setState(() {});
         },
         child: Container(
@@ -673,11 +673,16 @@ class _ShipmentsState extends State<Shipments> {
                                                 MainAxisAlignment.spaceAround,
                                             children: [
                                               InkWell(
-                                                onTap: () {
-                                                  changeOrderStatus(
+                                                onTap: () async{
+                                                  await changeOrderStatus(
                                                       tracking_number,
                                                       "canceled");
-
+// Show toast message
+  Fluttertoast.showToast(
+    msg: 'لقد تم الغاء الطلب',
+    backgroundColor: Colors.green,
+    textColor: Colors.white,
+  );
                                                   Navigator.of(context).pop();
                                                 },
                                                 child: Container(
@@ -765,13 +770,21 @@ class _ShipmentsState extends State<Shipments> {
                                                 MainAxisAlignment.spaceAround,
                                             children: [
                                               InkWell(
-                                                onTap: () {
-                                                  changeOrderStatus(
-                                                      tracking_number,
-                                                      "delivered");
+                                                onTap: () async {
+  // Change order status
+  await changeOrderStatus(tracking_number, "delivered");
 
-                                                  Navigator.of(context).pop();
-                                                },
+  // Show toast message
+  Fluttertoast.showToast(
+    msg: 'لقد تم اكتمال الطلب',
+    backgroundColor: Colors.green,
+    textColor: Colors.white,
+  );
+
+  // Close the current screen
+  Navigator.of(context).pop();
+},
+
                                                 child: Container(
                                                   height: 50,
                                                   width: 100,

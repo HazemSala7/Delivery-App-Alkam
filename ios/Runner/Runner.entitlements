@@ -4,13 +4,9 @@
 <dict>
 	<key>aps-environment</key>
 	<string>development</string>
-	<key>com.apple.developer.associated-domains</key>
-	<array>
-		<string>applinks:j-food-2a4d7.web.app</string>
-	</array>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)co.j-food.perfect</string>
+		<string>$(AppIdentifierPrefix)jfoob.business.perfectadv</string>
 	</array>
 </dict>
 </plist>

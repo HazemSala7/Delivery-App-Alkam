@@ -37,29 +37,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SingleChildScrollView(
-        child: Center(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(
-                height: 100,
+    return Container(
+      color: MAINCOLOR,
+      child: SafeArea(
+        child: Scaffold(
+          body: SingleChildScrollView(
+            child: Center(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                    height: 100,
+                  ),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(150),
+                    child: Image.asset(
+                      "assets/logo2.png",
+                      height: 150,
+                      width: 150,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(
+                    height: 40,
+                  ),
+                  MobileWidget()
+                ],
               ),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(150),
-                child: Image.asset(
-                  "assets/logo2.png",
-                  height: 150,
-                  width: 150,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(
-                height: 40,
-              ),
-              MobileWidget()
-            ],
+            ),
           ),
         ),
       ),

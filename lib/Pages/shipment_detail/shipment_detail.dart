@@ -138,237 +138,253 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
     return Stack(
       alignment: Alignment.bottomLeft,
       children: [
-        Scaffold(
-          body: SingleChildScrollView(
-            child: Column(
-              children: [
-                Container(
-                  height: 170,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                      color: MAINCOLOR,
-                      borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(25),
-                          bottomRight: Radius.circular(25))),
-                  child: Padding(
-                    padding: const EdgeInsets.only(
-                        right: 15, left: 15, top: 20, bottom: 10),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Container(
+          color: MAINCOLOR,
+          child: SafeArea(
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    Container(
+                      height: 170,
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                          color: MAINCOLOR,
+                          borderRadius: const BorderRadius.only(
+                              bottomLeft: Radius.circular(25),
+                              bottomRight: Radius.circular(25))),
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                            right: 15, left: 15, top: 20, bottom: 10),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            const SizedBox(
-                              width: 25,
-                              height: 25,
-                            ),
-                            Text(
-                              widget.name,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 24,
-                                  color: Colors.white),
-                            ),
-                            IconButton(
-                                onPressed: () {
-                                  Navigator.pop(context);
-                                },
-                                icon: const Icon(
-                                  Icons.arrow_forward_outlined,
-                                  size: 25,
-                                  color: Colors.white,
-                                ))
-                          ],
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            right: 15,
-                            left: 15,
-                          ),
-                          child: Container(
-                            width: double.infinity,
-                            height: 50,
-                            decoration: BoxDecoration(
-                                color: const Color.fromARGB(98, 123, 128, 125),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Row(
+                            Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(
-                                  flex: 1,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        details = true;
-                                        con = false;
-                                        status = false;
-                                      });
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(5.0),
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                            color:
-                                                details ? Colors.white : null,
-                                            borderRadius: details
-                                                ? BorderRadius.circular(10)
-                                                : BorderRadius.circular(0)),
-                                        height: 45,
-                                        child: Center(
-                                          child: Text(
-                                            AppLocalizations.of(context)!
-                                                .details,
-                                            style: TextStyle(
-                                                color: details
-                                                    ? MAINCOLOR
-                                                    : Colors.white,
-                                                fontSize: 16),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                const SizedBox(
+                                  width: 25,
+                                  height: 25,
                                 ),
-                                Expanded(
-                                  flex: 1,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        details = false;
-                                        con = true;
-                                        status = false;
-                                      });
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(5.0),
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                            color: con ? Colors.white : null,
-                                            borderRadius: con
-                                                ? BorderRadius.circular(10)
-                                                : BorderRadius.circular(0)),
-                                        height: 45,
-                                        child: Center(
-                                          child: Text(
-                                            "موقع العميل",
-                                            style: TextStyle(
-                                                color: con
-                                                    ? MAINCOLOR
-                                                    : Colors.white,
-                                                fontSize: 16),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                Text(
+                                  widget.name,
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 24,
+                                      color: Colors.white),
                                 ),
-                                Expanded(
-                                  flex: 1,
-                                  child: InkWell(
-                                    onTap: () {
-                                      setState(() {
-                                        details = false;
-                                        con = false;
-                                        status = true;
-                                      });
+                                IconButton(
+                                    onPressed: () {
+                                      Navigator.pop(context);
                                     },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(5.0),
-                                      child: Container(
-                                        decoration: BoxDecoration(
-                                            color: status ? Colors.white : null,
-                                            borderRadius: status
-                                                ? BorderRadius.circular(10)
-                                                : BorderRadius.circular(0)),
-                                        height: 45,
-                                        child: Center(
-                                          child: Text(
-                                            AppLocalizations.of(context)!
-                                                .status,
-                                            style: TextStyle(
-                                                color: status
-                                                    ? MAINCOLOR
-                                                    : Colors.white,
-                                                fontSize: 16),
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                                    icon: const Icon(
+                                      Icons.arrow_forward_outlined,
+                                      size: 25,
+                                      color: Colors.white,
+                                    ))
                               ],
                             ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                ),
-                details
-                    ? DetailsScreen(
-                        tracking_number: widget.shipment_id.toString(),
-                        quantity: widget.quantity,
-                        from: widget.from,
-                        to: widget.to,
-                        status: widget.status,
-                        business_name: widget.business_name,
-                        business_phone: widget.business_phone,
-                        consignee_name: widget.consignee_name,
-                        consignee_phone1: widget.consignee_phone1,
-                        consignee_phone2: widget.consignee_phone2,
-                        items_description: widget.items_description,
-                        cod_amount: widget.cod_amount,
-                        resturantAdress: widget.resturantAdress,
-                        customerAdress: widget.customerAdress,
-                        customerNear: widget.customerNear,
-                      )
-                    : con
-                        ? SizedBox(
-                            width: double.infinity,
-                            height: MediaQuery.of(context).size.height - 170,
-                            child: GoogleMap(
-                              onMapCreated: _onMapCreated,
-                              initialCameraPosition: CameraPosition(
-                                target: LatLng(
-                                    double.parse(widget.lattitude.toString()),
-                                    double.parse(widget.longitude.toString())),
-                                zoom: 11.0,
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                right: 15,
+                                left: 15,
                               ),
-                              markers: {
-                                Marker(
-                                  markerId: const MarkerId("marker1"),
-                                  position: LatLng(
-                                      double.parse(widget.lattitude.toString()),
-                                      double.parse(
-                                          widget.longitude.toString())),
-                                  draggable: true,
-                                  onDragEnd: (value) {
-                                    // value is the new position
-                                  },
-                                  icon: BitmapDescriptor.defaultMarker,
+                              child: Container(
+                                width: double.infinity,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                    color:
+                                        const Color.fromARGB(98, 123, 128, 125),
+                                    borderRadius: BorderRadius.circular(10)),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Expanded(
+                                      flex: 1,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            details = true;
+                                            con = false;
+                                            status = false;
+                                          });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(5.0),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                                color: details
+                                                    ? Colors.white
+                                                    : null,
+                                                borderRadius: details
+                                                    ? BorderRadius.circular(10)
+                                                    : BorderRadius.circular(0)),
+                                            height: 45,
+                                            child: Center(
+                                              child: Text(
+                                                AppLocalizations.of(context)!
+                                                    .details,
+                                                style: TextStyle(
+                                                    color: details
+                                                        ? MAINCOLOR
+                                                        : Colors.white,
+                                                    fontSize: 16),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 1,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            details = false;
+                                            con = true;
+                                            status = false;
+                                          });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(5.0),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                                color:
+                                                    con ? Colors.white : null,
+                                                borderRadius: con
+                                                    ? BorderRadius.circular(10)
+                                                    : BorderRadius.circular(0)),
+                                            height: 45,
+                                            child: Center(
+                                              child: Text(
+                                                "موقع العميل",
+                                                style: TextStyle(
+                                                    color: con
+                                                        ? MAINCOLOR
+                                                        : Colors.white,
+                                                    fontSize: 16),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 1,
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            details = false;
+                                            con = false;
+                                            status = true;
+                                          });
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(5.0),
+                                          child: Container(
+                                            decoration: BoxDecoration(
+                                                color: status
+                                                    ? Colors.white
+                                                    : null,
+                                                borderRadius: status
+                                                    ? BorderRadius.circular(10)
+                                                    : BorderRadius.circular(0)),
+                                            height: 45,
+                                            child: Center(
+                                              child: Text(
+                                                AppLocalizations.of(context)!
+                                                    .status,
+                                                style: TextStyle(
+                                                    color: status
+                                                        ? MAINCOLOR
+                                                        : Colors.white,
+                                                    fontSize: 16),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const Marker(
-                                  markerId: MarkerId("marker2"),
-                                  position: LatLng(
-                                      37.415768808487435, -122.08440050482749),
-                                ),
-                              },
-                            ),
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    ),
+                    details
+                        ? DetailsScreen(
+                            tracking_number: widget.shipment_id.toString(),
+                            quantity: widget.quantity,
+                            from: widget.from,
+                            to: widget.to,
+                            status: widget.status,
+                            business_name: widget.business_name,
+                            business_phone: widget.business_phone,
+                            consignee_name: widget.consignee_name,
+                            consignee_phone1: widget.consignee_phone1,
+                            consignee_phone2: widget.consignee_phone2,
+                            items_description: widget.items_description,
+                            cod_amount: widget.cod_amount,
+                            resturantAdress: widget.resturantAdress,
+                            customerAdress: widget.customerAdress,
+                            customerNear: widget.customerNear,
                           )
-                        : ListView.builder(
-                            itemCount: 5,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemBuilder: (context, index) {
-                              return StatusCard(
-                                  index: index,
-                                  name: statuses[index],
-                                  CardColor: statuses[index] == widget.status
-                                      ? const Color(0xFFA51E22)
-                                      : Colors.white);
-                            })
-              ],
+                        : con
+                            ? SizedBox(
+                                width: double.infinity,
+                                height:
+                                    MediaQuery.of(context).size.height - 170,
+                                child: GoogleMap(
+                                  onMapCreated: _onMapCreated,
+                                  initialCameraPosition: CameraPosition(
+                                    target: LatLng(
+                                        double.parse(
+                                            widget.lattitude.toString()),
+                                        double.parse(
+                                            widget.longitude.toString())),
+                                    zoom: 11.0,
+                                  ),
+                                  markers: {
+                                    Marker(
+                                      markerId: const MarkerId("marker1"),
+                                      position: LatLng(
+                                          double.parse(
+                                              widget.lattitude.toString()),
+                                          double.parse(
+                                              widget.longitude.toString())),
+                                      draggable: true,
+                                      onDragEnd: (value) {
+                                        // value is the new position
+                                      },
+                                      icon: BitmapDescriptor.defaultMarker,
+                                    ),
+                                    const Marker(
+                                      markerId: MarkerId("marker2"),
+                                      position: LatLng(37.415768808487435,
+                                          -122.08440050482749),
+                                    ),
+                                  },
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: 5,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemBuilder: (context, index) {
+                                  return StatusCard(
+                                      index: index,
+                                      name: statuses[index],
+                                      CardColor:
+                                          statuses[index] == widget.status
+                                              ? const Color(0xFFA51E22)
+                                              : Colors.white);
+                                })
+                  ],
+                ),
+              ),
             ),
           ),
         ),
