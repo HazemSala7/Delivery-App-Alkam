@@ -31,7 +31,7 @@ class Shipments extends StatefulWidget {
 
 class _ShipmentsState extends State<Shipments> {
   bool searchCheck = false;
-  List<bool> clicked = [true, false, false, false, false, false];
+  List<bool> clicked = [true, false, false, false, false, false, false];
   TextEditingController searchController = TextEditingController();
   String salesmanId = "";
   bool isLoading = false;
@@ -78,14 +78,16 @@ class _ShipmentsState extends State<Shipments> {
       var response = await getRequest(clicked[0]
           ? "$URL_SHIPMENTS/$salesmanId"
           : clicked[1]
-              ? "$URL_SHIPMENTS_STATUS/pending/$salesmanId"
+              ? "$URL_SHIPMENTS_STATUS/in_progress/$salesmanId"
               : clicked[2]
-                  ? "$URL_SHIPMENTS_STATUS/in_progress/$salesmanId"
+                  ? "$URL_SHIPMENTS_STATUS/ready_for_delivery/$salesmanId"
                   : clicked[3]
-                      ? "$URL_SHIPMENTS_STATUS/delivered/$salesmanId"
+                      ? "$URL_SHIPMENTS_STATUS/in_delivery/$salesmanId"
                       : clicked[4]
-                          ? "$URL_SHIPMENTS_STATUS/returned/$salesmanId"
-                          : "$URL_SHIPMENTS_STATUS/canceled/$salesmanId");
+                          ? "$URL_SHIPMENTS_STATUS/delivered/$salesmanId"
+                          : clicked[5]
+                              ? "$URL_SHIPMENTS_STATUS/returned/$salesmanId"
+                              : "$URL_SHIPMENTS_STATUS/canceled/$salesmanId");
 
       if (response != null && response["orders"] is List) {
         _streamController.add(response["orders"]);
@@ -153,7 +155,8 @@ class _ShipmentsState extends State<Shipments> {
     List<String> status = [
       "الكل",
       "قيد المعالجة",
-      "جاهز للتسليم",
+      "جاهز للتوصيل",
+      "مع التوصيل",
       "تم التسليم",
       "مرجع",
       "ملغي",
@@ -444,7 +447,8 @@ class _ShipmentsState extends State<Shipments> {
             Container(
               height: status == "delivered" ||
                       status == "canceled" ||
-                      status == "returned"
+                      status == "returned" ||
+                      status == "in_progress"
                   ? 180
                   : 240,
               width: double.infinity,
@@ -644,7 +648,8 @@ class _ShipmentsState extends State<Shipments> {
                   Visibility(
                     visible: status == "delivered" ||
                             status == "canceled" ||
-                            status == "returned"
+                            status == "returned" ||
+                            status == "in_progress"
                         ? false
                         : true,
                     child: Padding(
@@ -673,16 +678,16 @@ class _ShipmentsState extends State<Shipments> {
                                                 MainAxisAlignment.spaceAround,
                                             children: [
                                               InkWell(
-                                                onTap: () async{
+                                                onTap: () async {
                                                   await changeOrderStatus(
                                                       tracking_number,
                                                       "canceled");
-// Show toast message
-  Fluttertoast.showToast(
-    msg: 'لقد تم الغاء الطلب',
-    backgroundColor: Colors.green,
-    textColor: Colors.white,
-  );
+                                                  Fluttertoast.showToast(
+                                                    msg: 'لقد تم الغاء الطلب',
+                                                    backgroundColor:
+                                                        Colors.green,
+                                                    textColor: Colors.white,
+                                                  );
                                                   Navigator.of(context).pop();
                                                 },
                                                 child: Container(
@@ -759,9 +764,11 @@ class _ShipmentsState extends State<Shipments> {
                                     context: context,
                                     builder: (BuildContext context) {
                                       return AlertDialog(
-                                        content: const Text(
-                                          "هل تريد بالتأكيد اكتمال الطلب ؟ ",
-                                          style: TextStyle(
+                                        content: Text(
+                                          status == "ready_for_delivery"
+                                              ? "هل تريد تأكيد استلام الطلب ؟"
+                                              : "هل تريد تأكيد تسليم الطلب ؟ ",
+                                          style: const TextStyle(
                                               fontWeight: FontWeight.bold),
                                         ),
                                         actions: <Widget>[
@@ -771,20 +778,29 @@ class _ShipmentsState extends State<Shipments> {
                                             children: [
                                               InkWell(
                                                 onTap: () async {
-  // Change order status
-  await changeOrderStatus(tracking_number, "delivered");
+                                                  // Change order status
+                                                  status == "ready_for_delivery"
+                                                      ? await changeOrderStatus(
+                                                          tracking_number,
+                                                          "in_delivery")
+                                                      : await changeOrderStatus(
+                                                          tracking_number,
+                                                          "delivered");
 
-  // Show toast message
-  Fluttertoast.showToast(
-    msg: 'لقد تم اكتمال الطلب',
-    backgroundColor: Colors.green,
-    textColor: Colors.white,
-  );
+                                                  // Show toast message
+                                                  Fluttertoast.showToast(
+                                                    msg: status ==
+                                                            "ready_for_delivery"
+                                                        ? "لقد تم تأكيد استلام الطلب"
+                                                        : 'لقد تم اكتمال الطلب',
+                                                    backgroundColor:
+                                                        Colors.green,
+                                                    textColor: Colors.white,
+                                                  );
 
-  // Close the current screen
-  Navigator.of(context).pop();
-},
-
+                                                  // Close the current screen
+                                                  Navigator.of(context).pop();
+                                                },
                                                 child: Container(
                                                   height: 50,
                                                   width: 100,
@@ -839,11 +855,13 @@ class _ShipmentsState extends State<Shipments> {
                                 child: Container(
                                   height: 40,
                                   decoration:
-                                      BoxDecoration(color: Colors.green),
-                                  child: const Center(
+                                      const BoxDecoration(color: Colors.green),
+                                  child: Center(
                                     child: Text(
-                                      "اكتمال الطلب",
-                                      style: TextStyle(
+                                      status == "ready_for_delivery"
+                                          ? "تم استلام الطلب"
+                                          : "تم توصيل الطلب",
+                                      style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           color: Colors.white),
                                     ),

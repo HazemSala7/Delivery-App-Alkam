@@ -4,7 +4,7 @@
      <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/> 
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
    <application
-        android:label="Business J-Food"
+        android:label="J-Food Business"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity

@@ -150,8 +150,8 @@ class _OptimusState extends State<Optimus> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('en', ''), // English
-        Locale('ar', 'AE'), // Arabic
+        Locale('en', ''), 
+        Locale('ar', 'AE'),
       ],
       locale: locale,
       debugShowCheckedModeBanner: false,

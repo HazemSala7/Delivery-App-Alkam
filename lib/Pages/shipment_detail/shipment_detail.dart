@@ -419,8 +419,9 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
   }
 
   List<String> statuses = [
-    "pending",
     "in_progress",
+    "ready_for_delivery",
+    "in_delivery",
     "delivered",
     "canceled",
     "returned",
@@ -501,15 +502,17 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        name == "pending"
+                        name == "in_progress"
                             ? "قيد المعالجة"
-                            : name == "in_progress"
-                                ? "جاهز للتسليم"
-                                : name == "delivered"
-                                    ? " تم التسليم"
-                                    : name == "canceled"
-                                        ? "ملغى"
-                                        : "مرجع",
+                            : name == "ready_for_delivery"
+                                ? "جاهز للتوصيل"
+                                : name == "in_delivery"
+                                    ? "في التوصيل"
+                                    : name == "delivered"
+                                        ? " تم التسليم"
+                                        : name == "canceled"
+                                            ? "ملغى"
+                                            : "مرجع",
                         style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
@@ -914,15 +917,17 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                status == "pending"
+                                status == "in_progress"
                                     ? "قيد المعالجة"
-                                    : status == "in_progress"
-                                        ? "جاهز للتسليم"
-                                        : status == "delivered"
-                                            ? " تم التسليم"
-                                            : status == "canceled"
-                                                ? "ملغى"
-                                                : "مرجع",
+                                    : status == "ready_for_delivery"
+                                        ? "جاهز للتوصيل"
+                                        : status == "in_delivery"
+                                            ? "في التوصيل"
+                                            : status == "delivered"
+                                                ? " تم التسليم"
+                                                : status == "canceled"
+                                                    ? "ملغى"
+                                                    : "مرجع",
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 18),
                               ),
