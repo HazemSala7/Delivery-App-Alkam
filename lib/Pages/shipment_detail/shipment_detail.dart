@@ -370,7 +370,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                                 ),
                               )
                             : ListView.builder(
-                                itemCount: 5,
+                                itemCount: 6,
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 itemBuilder: (context, index) {
@@ -432,9 +432,9 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
     DateTime createdDate = DateTime.parse(widget.createdAt);
     DateTime updatedDate = DateTime.parse(widget.updatedAt);
 
-    String formattedDate = DateFormat('dd/MM/yyyy - hh:mm a').format(
-      status == "pending" ? createdDate : updatedDate,
-    );
+    // String formattedDate = DateFormat('dd/MM/yyyy - hh:mm a').format(
+    //   statuses[index] == "in_progress" ? createdDate : updatedDate,
+    // );
 
     return Padding(
       padding: const EdgeInsets.only(left: 10, right: 10),
@@ -520,14 +520,14 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                                 ? Colors.white
                                 : Colors.black),
                       ),
-                      Text(
-                        formattedDate,
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: statuses[index] == widget.status
-                                ? Colors.white
-                                : const Color(0xff3C3C3C)),
-                      )
+                      // Text(
+                      //   formattedDate,
+                      //   style: TextStyle(
+                      //       fontSize: 12,
+                      //       color: statuses[index] == widget.status
+                      //           ? Colors.white
+                      //           : const Color(0xff3C3C3C)),
+                      // )
                     ],
                   ),
                 ),
@@ -920,9 +920,9 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                                 status == "in_progress"
                                     ? "قيد المعالجة"
                                     : status == "ready_for_delivery"
-                                        ? "جاهز للتوصيل"
+                                        ? "استلام من المطعم"
                                         : status == "in_delivery"
-                                            ? "في التوصيل"
+                                            ? "تسليم للعميل"
                                             : status == "delivered"
                                                 ? " تم التسليم"
                                                 : status == "canceled"

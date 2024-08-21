@@ -31,7 +31,7 @@ class Shipments extends StatefulWidget {
 
 class _ShipmentsState extends State<Shipments> {
   bool searchCheck = false;
-  List<bool> clicked = [true, false, false, false, false, false, false];
+  List<bool> clicked = [true, false, false, false];
   TextEditingController searchController = TextEditingController();
   String salesmanId = "";
   bool isLoading = false;
@@ -78,16 +78,10 @@ class _ShipmentsState extends State<Shipments> {
       var response = await getRequest(clicked[0]
           ? "$URL_SHIPMENTS/$salesmanId"
           : clicked[1]
-              ? "$URL_SHIPMENTS_STATUS/in_progress/$salesmanId"
+              ? "$URL_SHIPMENTS_STATUS/ready_for_delivery/$salesmanId"
               : clicked[2]
-                  ? "$URL_SHIPMENTS_STATUS/ready_for_delivery/$salesmanId"
-                  : clicked[3]
-                      ? "$URL_SHIPMENTS_STATUS/in_delivery/$salesmanId"
-                      : clicked[4]
-                          ? "$URL_SHIPMENTS_STATUS/delivered/$salesmanId"
-                          : clicked[5]
-                              ? "$URL_SHIPMENTS_STATUS/returned/$salesmanId"
-                              : "$URL_SHIPMENTS_STATUS/canceled/$salesmanId");
+                  ? "$URL_SHIPMENTS_STATUS/in_delivery/$salesmanId"
+                  : "$URL_SHIPMENTS_STATUS/delivered/$salesmanId");
 
       if (response != null && response["orders"] is List) {
         _streamController.add(response["orders"]);
@@ -154,12 +148,9 @@ class _ShipmentsState extends State<Shipments> {
   Widget build(BuildContext context) {
     List<String> status = [
       "الكل",
-      "قيد المعالجة",
-      "جاهز للتوصيل",
-      "مع التوصيل",
+      "استلام من المطعم",
+      "تسليم للعميل",
       "تم التسليم",
-      "مرجع",
-      "ملغي",
     ];
 
     return Container(
