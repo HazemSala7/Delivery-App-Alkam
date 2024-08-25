@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -9,12 +8,9 @@ import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
 import 'package:optimus_opost/Pages/notifications/notifications.dart';
 import 'package:optimus_opost/Pages/shipment_detail/shipment_detail.dart';
 import 'package:optimus_opost/Server/server.dart';
-import 'package:optimus_opost/main.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Server/functions.dart';
-import '../search_dialog/search_dialog.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 
 class Shipments extends StatefulWidget {
@@ -439,7 +435,8 @@ class _ShipmentsState extends State<Shipments> {
               height: status == "delivered" ||
                       status == "canceled" ||
                       status == "returned" ||
-                      status == "in_progress"
+                      status == "in_progress" ||
+                      status == "pending"
                   ? 180
                   : 240,
               width: double.infinity,
@@ -640,7 +637,8 @@ class _ShipmentsState extends State<Shipments> {
                     visible: status == "delivered" ||
                             status == "canceled" ||
                             status == "returned" ||
-                            status == "in_progress"
+                            status == "in_progress" ||
+                            status == "pending"
                         ? false
                         : true,
                     child: Padding(
