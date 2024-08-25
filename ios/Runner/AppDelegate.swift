@@ -22,7 +22,7 @@ import UserNotifications
     Messaging.messaging().delegate = self
 
     GeneratedPluginRegistrant.register(with: self)
-    GMSServices.provideAPIKey("AIzaSyDXBSsEvwOzWFqjPnsPXBHXM-xLcxuYwl8")
+    GMSServices.provideAPIKey("AIzaSyC86lWEI5fMklifz509ZmHUyGpj1AuplUA")
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
