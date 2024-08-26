@@ -579,9 +579,13 @@ class _ShipmentsState extends State<Shipments> {
                             Column(
                               children: [
                                 Text(
-                                  type.toString() == "load"
-                                      ? "ادفع للمطعم"
-                                      : "استلم من الزبون",
+                                  status == "delivered"
+                                      ? "تم استلام المبلغ"
+                                      : status == "ready_for_delivery"
+                                          ? "ادفع للمطعم"
+                                          : status == "in_delivery"
+                                              ? "الزبون يجب ان يدفع"
+                                              : "",
                                   style: const TextStyle(
                                       color: Color(0xff3C3C3C), fontSize: 12),
                                 ),
@@ -755,7 +759,7 @@ class _ShipmentsState extends State<Shipments> {
                                       return AlertDialog(
                                         content: Text(
                                           status == "ready_for_delivery"
-                                              ? "هل تريد تأكيد استلام الطلب ؟"
+                                              ? "الرجاء التاكد من المكونات والمشروبات قبل استلام الطلب"
                                               : "هل تريد تأكيد تسليم الطلب ؟ ",
                                           style: const TextStyle(
                                               fontWeight: FontWeight.bold),
