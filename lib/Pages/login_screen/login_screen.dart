@@ -199,9 +199,9 @@ class _LoginScreenState extends State<LoginScreen> {
             'salesmanId', data["user"]['salesman_id'].toString());
         print(data["user"]['salesman_id'].toString());
         await prefs.setString('password', passwordController.text);
-        await prefs.setString('active', data["driver"]['active']);
-        await prefs.setString('driver_name', data["driver"]['name']);
-        await prefs.setString('driver_serial', data["driver"]['serial_number']);
+        await prefs.setString('active', data["user"]['active']);
+        await prefs.setString('driver_name', data["user"]['name']);
+        await prefs.setString('driver_serial', data["user"]['serial_number']);
         await prefs.setBool('login', true);
 
         Fluttertoast.showToast(
