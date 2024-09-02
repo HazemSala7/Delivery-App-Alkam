@@ -5,7 +5,7 @@ import FirebaseCore
 import FirebaseMessaging
 import UserNotifications
 
-@UIApplicationMain
+@main
 @objc class AppDelegate: FlutterAppDelegate, MessagingDelegate {
   
   let gcmMessageIDKey = "gcm.message_id"
