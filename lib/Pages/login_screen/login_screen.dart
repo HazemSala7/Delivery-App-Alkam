@@ -194,10 +194,11 @@ class _LoginScreenState extends State<LoginScreen> {
       SharedPreferences prefs = await SharedPreferences.getInstance();
       int role_id = data["user"]['role_id'] ?? 1;
       if (role_id == 3) {
+        
         await prefs.setString('phone', mobileController.text);
         await prefs.setString(
-            'salesmanId', data["user"]['salesman_id'].toString());
-        print(data["user"]['salesman_id'].toString());
+            'salesmanId', data["user"]['id'].toString());
+        print(data["user"]['id'].toString());
         await prefs.setString('password', passwordController.text);
         await prefs.setString('active', data["user"]['active']);
         await prefs.setString('driver_name', data["user"]['name']);
@@ -212,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> {
             context,
             MaterialPageRoute(
                 builder: (context) => Shipments(
-                      status: data["driver"]['active'],
+                      status: data["user"]['active'],
                     )));
       } else {
         Fluttertoast.showToast(msg: "غير مصرح لدخول التطبيق");
