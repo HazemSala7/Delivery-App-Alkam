@@ -946,24 +946,24 @@ class _ShipmentsState extends State<Shipments> {
               ),
             ),
           ),
-          Divider(
-            color: MAINCOLOR,
-          ),
-          ListTile(
-            title: Text(status ? "السائق متاح" : "السائق غير متاح",
-                style:
-                    const TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
-            trailing: Switch(
-              activeColor: MAINCOLOR,
-              value: status,
-              onChanged: (val) {
-                setState(() {
-                  status = val;
-                });
-                updateSalesmanStatus(val);
-              },
-            ),
-          ),
+          // Divider(
+          //   color: MAINCOLOR,
+          // ),
+          // ListTile(
+          //   title: Text(status ? "السائق متاح" : "السائق غير متاح",
+          //       style:
+          //           const TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+          //   trailing: Switch(
+          //     activeColor: MAINCOLOR,
+          //     value: status,
+          //     onChanged: (val) {
+          //       setState(() {
+          //         status = val;
+          //       });
+          //       updateSalesmanStatus(val);
+          //     },
+          //   ),
+          // ),
           Divider(
             color: MAINCOLOR,
           ),
