@@ -2,7 +2,7 @@
   "project_info": {
     "project_number": "547928555422",
     "project_id": "j-food-2a4d7",
-    "storage_bucket": "j-food-2a4d7.appspot.com"
+    "storage_bucket": "j-food-2a4d7.firebasestorage.app"
   },
   "client": [
     {
@@ -26,9 +26,104 @@
     },
     {
       "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:a19799a8a18c341944208f",
+        "android_client_info": {
+          "package_name": "co.perfect.jfood"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:cf76cb4a79af1af144208f",
+        "android_client_info": {
+          "package_name": "delivery.business.jfood"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:547928555422:android:f1d977c45a6a8ffa44208f",
         "android_client_info": {
           "package_name": "jfoob.business.perfect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:ec0d29f2311bbdd544208f",
+        "android_client_info": {
+          "package_name": "jfood.business.perfect"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:eeeff95fdaff00b144208f",
+        "android_client_info": {
+          "package_name": "jfood.hrsps.com"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:e3a6d2c2689e695144208f",
+        "android_client_info": {
+          "package_name": "jfood.perfect.com"
         }
       },
       "oauth_client": [],

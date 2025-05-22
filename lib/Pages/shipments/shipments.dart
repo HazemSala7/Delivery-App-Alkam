@@ -36,18 +36,38 @@ class _ShipmentsState extends State<Shipments> {
   bool status = false;
   String driverSerial = "";
   String driverName = "";
+  List<dynamic> previousShipments = [];
+  bool _isDialogShowing = false;
+  late List<String> seenShipmentIds;
+  int currentPage = 1;
+  bool hasMorePages = true;
+  bool _loading = false;
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
     _streamController = StreamController<List<dynamic>>();
     status = widget.status == "true" ? true : false;
     loadData();
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !isLoading &&
+          hasMorePages) {
+        fetchShipments(false, page: currentPage + 1);
+      }
+    });
+    _timer = Timer.periodic(const Duration(seconds: 20), (timer) {
+      fetchShipments(false, page: currentPage);
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _streamController.close();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -57,30 +77,69 @@ class _ShipmentsState extends State<Shipments> {
       salesmanId = prefs.getString('salesmanId') ?? "";
       driverName = prefs.getString('driver_name') ?? "";
       driverSerial = prefs.getString('driver_serial') ?? "";
+      seenShipmentIds = prefs.getStringList('seenShipmentIds') ?? [];
     });
     await fetchShipments(false);
-    _timer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      fetchShipments(false);
-    });
   }
 
-  Future<void> fetchShipments(bool fromChange) async {
+  Future<void> fetchShipments(bool fromChange, {int page = 1}) async {
     if (fromChange) {
       setState(() {
         isLoading = true;
       });
     }
+    setState(() {
+      if (page > 1) {
+        _loading = true;
+      }
+    });
+
     try {
-      var response = await getRequest(clicked[0]
+      String baseUrl = clicked[0]
           ? "$URL_SHIPMENTS/$salesmanId"
           : clicked[1]
               ? "$URL_SHIPMENTS_STATUS/ready_for_delivery/$salesmanId"
               : clicked[2]
                   ? "$URL_SHIPMENTS_STATUS/in_delivery/$salesmanId"
-                  : "$URL_SHIPMENTS_STATUS/delivered/$salesmanId");
+                  : "$URL_SHIPMENTS_STATUS/delivered/$salesmanId";
 
-      if (response != null && response["orders"] is List) {
-        _streamController.add(response["orders"]);
+      String url = "$baseUrl?page=$page";
+      var response = await getRequest(url);
+
+      if (response != null &&
+          response["orders"] != null &&
+          response["orders"]["data"] is List) {
+        List<dynamic> newShipments = response["orders"]["data"];
+        int lastPage = response["orders"]["last_page"];
+        currentPage = response["orders"]["current_page"];
+        hasMorePages = currentPage < lastPage;
+
+        if (page == 1) {
+          previousShipments = newShipments;
+        } else {
+          previousShipments.addAll(newShipments);
+        }
+
+        if (clicked[0] && page == 1 && !_isDialogShowing) {
+          final newOnes = newShipments.where((shipment) {
+            final id = shipment["id"].toString();
+            return !seenShipmentIds.contains(id);
+          }).toList();
+
+          print(newOnes);
+          if (newOnes.isNotEmpty) {
+            _isDialogShowing = true;
+            showNewShipmentDialog(context, newOnes.first);
+          }
+
+          final updatedIds =
+              previousShipments.map((e) => e["id"].toString()).toList();
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          await prefs.setStringList('seenShipmentIds', updatedIds);
+          seenShipmentIds = updatedIds;
+        }
+
+        _streamController.add(previousShipments);
       } else {
         _streamController.add([]);
       }
@@ -89,54 +148,96 @@ class _ShipmentsState extends State<Shipments> {
     } finally {
       setState(() {
         isLoading = false;
+        if (page > 1) {
+          _loading = false;
+        }
       });
     }
   }
 
-  Future<void> changeOrderStatus(String orderId, String status) async {
-    setState(() {
-      isLoading = true;
+  void showNewShipmentDialog(BuildContext context, dynamic shipment) {
+    Timer? autoDismissTimer;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        autoDismissTimer = Timer(const Duration(seconds: 20), () {
+          if (Navigator.of(ctx).canPop()) {
+            Navigator.of(ctx).pop();
+            _isDialogShowing = false;
+            rejectShipment(shipment["id"].toString());
+          }
+        });
+
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          title: const Text(
+            "طلب جديد",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: const Text("هناك طلب جديد مرفق لك، هل تريد استلام توصيله؟",
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          actions: [
+            TextButton(
+              onPressed: () {
+                autoDismissTimer?.cancel();
+                Navigator.of(ctx).pop();
+                _isDialogShowing = false;
+                confirmShipment(shipment["id"].toString());
+              },
+              child: const Text("تأكيد",
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () {
+                autoDismissTimer?.cancel();
+                Navigator.of(ctx).pop();
+                _isDialogShowing = false;
+                rejectShipment(shipment["id"].toString());
+              },
+              child: const Text("الغاء",
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      _isDialogShowing = false;
     });
+  }
+
+  Future<void> confirmShipment(String shipmentId) async {
     try {
-      final response = await http.post(
-        Uri.parse('https://ustore.ps/login/api/change_order_status'),
-        headers: <String, String>{'Content-Type': 'application/json'},
-        body:
-            jsonEncode(<String, String>{'order_id': orderId, 'status': status}),
+      final res = await postRequest(
+        "$URL_CONFIRM_SHIPMENT/$shipmentId",
+        {},
       );
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        await fetchShipments(true);
+
+      if (res != null && res["status"] == true) {
+        Fluttertoast.showToast(msg: "تم استقبال الطلب");
       } else {
-        throw Exception('Failed to change order status');
+        Fluttertoast.showToast(msg: "حدث مشكلة اثناء تاكيد استقبال الطلب");
       }
     } catch (e) {
-      Fluttertoast.showToast(msg: 'Error changing order status');
-    } finally {
-      setState(() {
-        isLoading = false;
-      });
+      debugPrint("Error confirming shipment: $e");
     }
   }
 
-  void updateSalesmanStatus(bool status) async {
-    final response = await http.put(
-      Uri.parse('https://ustore.ps/login/api/drivers/$salesmanId'),
-      headers: <String, String>{
-        'Content-Type': 'application/json; charset=UTF-8',
-      },
-      body: jsonEncode(<String, dynamic>{
-        'active': status.toString(),
-      }),
-    );
+  Future<void> rejectShipment(String shipmentId) async {
+    try {
+      final res = await postRequest(
+        "$URL_REJECT_SHIPMENT/$shipmentId",
+        {},
+      );
 
-    if (response.statusCode == 200) {
-      // Handle successful response
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('status', status.toString());
-      print('Status updated successfully');
-    } else {
-      // Handle error response
-      print('Failed to update status');
+      if (res != null && res["status"] == true) {
+        Fluttertoast.showToast(msg: "تم رفض الطلب");
+      } else {
+        Fluttertoast.showToast(msg: "حدث مشكلة اثناء رفض استقبال الطلب");
+      }
+    } catch (e) {
+      debugPrint("Error confirming shipment: $e");
     }
   }
 
@@ -179,6 +280,7 @@ class _ShipmentsState extends State<Shipments> {
             ],
           ),
           body: SingleChildScrollView(
+            controller: _scrollController,
             child: Column(
               children: [
                 Padding(
@@ -233,63 +335,66 @@ class _ShipmentsState extends State<Shipments> {
                           );
                         } else {
                           var shipments = snapshot.data;
-                          return ListView.builder(
-                            physics: const NeverScrollableScrollPhysics(),
-                            shrinkWrap: true,
-                            itemCount: shipments.length,
-                            itemBuilder: (context, int index) {
-                              return ShipmentCard(
-                                tracking_number:
-                                    shipments[index]["id"].toString(),
-                                id: shipments[index]["id"] ?? 1,
-                                lattitude:
-                                    shipments[index]["lattitude"].toString(),
-                                longitude:
-                                    shipments[index]["longitude"].toString(),
-                                quantity: shipments[index]["items_length"] ?? 0,
-                                from: shipments[index]["restaurant"] == null
-                                    ? "-"
-                                    : shipments[index]["restaurant"]["name"] ??
-                                        "-",
-                                to: shipments[index]["customer_name"] ?? "-",
-                                status: shipments[index]["status"] ?? "-",
-                                productsArray: shipments[index]["items"] ?? "-",
-                                type: shipments[index]["type"] ?? "-",
-                                business_name: shipments[index]["restaurant"] ==
-                                        null
-                                    ? "-"
-                                    : shipments[index]["restaurant"]["name"] ??
-                                        "-",
-                                business_phone:
-                                    shipments[index]["restaurant"] == null
-                                        ? "-"
-                                        : shipments[index]["restaurant"]
-                                                ["phone_number"] ??
-                                            "-",
-                                consignee_name:
-                                    shipments[index]["customer_name"] ?? "-",
-                                consignee_phone1:
-                                    shipments[index]["mobile"] ?? "-",
-                                consignee_phone2:
-                                    shipments[index]["mobile"] ?? "-",
-                                items_description: "-",
-                                cod_amount: double.parse(
-                                    shipments[index]["total"].toString()),
-                                createdAt:
-                                    shipments[index]["created_at"] ?? "-",
-                                updatedAt:
-                                    shipments[index]["updated_at"] ?? "-",
-                                customerAdress:
-                                    shipments[index]["address"] ?? "-",
-                                customerNear: shipments[index]["area"] ?? "-",
-                                resturantAdress:
-                                    shipments[index]["restaurant"] == null
-                                        ? "-"
-                                        : shipments[index]["restaurant"]
-                                                ["address"] ??
-                                            "-",
-                              );
-                            },
+                          return Column(
+                            children: [
+                              ListView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                shrinkWrap: true,
+                                itemCount: shipments.length,
+                                itemBuilder: (context, int index) {
+                                  return ShipmentCard(
+                                      tracking_number:
+                                          shipments[index]["id"].toString(),
+                                      id: shipments[index]["id"] ?? 1,
+                                      lattitude: shipments[index]["lattitude"]
+                                          .toString(),
+                                      longitude: shipments[index]["longitude"]
+                                          .toString(),
+                                      quantity:
+                                          shipments[index]["items_length"] ?? 0,
+                                      from:
+                                          shipments[index]["restaurant"] == null
+                                              ? "-"
+                                              : shipments[index]["restaurant"]
+                                                      ["name"] ??
+                                                  "-",
+                                      to: shipments[index]["customer_name"] ??
+                                          "-",
+                                      status: shipments[index]["status"] ?? "-",
+                                      productsArray:
+                                          shipments[index]["items"] ?? "-",
+                                      type: shipments[index]["type"] ?? "-",
+                                      business_name:
+                                          shipments[index]["restaurant"] == null
+                                              ? "-"
+                                              : shipments[index]["restaurant"]
+                                                      ["name"] ??
+                                                  "-",
+                                      business_phone:
+                                          shipments[index]["restaurant"] == null
+                                              ? "-"
+                                              : shipments[index]["restaurant"]
+                                                      ["phone_number"] ??
+                                                  "-",
+                                      consignee_name:
+                                          shipments[index]["customer_name"] ?? "-",
+                                      consignee_phone1: shipments[index]["mobile"] ?? "-",
+                                      consignee_phone2: shipments[index]["mobile"] ?? "-",
+                                      items_description: "-",
+                                      cod_amount: double.parse(shipments[index]["total"].toString()),
+                                      createdAt: shipments[index]["created_at"] ?? "-",
+                                      updatedAt: shipments[index]["updated_at"] ?? "-",
+                                      customerAdress: shipments[index]["address"] ?? "-",
+                                      customerNear: shipments[index]["area"] ?? "-",
+                                      resturantAdress: shipments[index]["restaurant"] == null ? "-" : shipments[index]["restaurant"]["address"] ?? "-",
+                                      userId: shipments[index]["user_id"] ?? 1);
+                                },
+                              ),
+                              SizedBox(
+                                height: 10,
+                              ),
+                              if (_loading) CircularProgressIndicator()
+                            ],
                           );
                         }
                       }),
@@ -300,6 +405,107 @@ class _ShipmentsState extends State<Shipments> {
         ),
       ),
     );
+  }
+
+  Future<dynamic> postRequest(String url, Map<String, dynamic> body) async {
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode(body),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception('Failed POST with status: ${response.statusCode}');
+      }
+    } catch (e) {
+      print("POST request error: $e");
+      return null;
+    }
+  }
+
+  Future<void> changeOrderStatus(
+      String orderId, String status, int userId, String msg) async {
+    setState(() {
+      isLoading = true;
+    });
+    try {
+      final response = await http.post(
+        Uri.parse('https://hrsps.com/login/api/change_order_status'),
+        headers: <String, String>{'Content-Type': 'application/json'},
+        body:
+            jsonEncode(<String, String>{'order_id': orderId, 'status': status}),
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await fetchShipments(true);
+        await sendNotification(
+          userIds: [userId],
+          title: 'تحديث بخصوص حالة الطلب',
+          body: msg,
+        );
+      } else {
+        throw Exception('Failed to change order status');
+      }
+    } catch (e) {
+      Fluttertoast.showToast(msg: 'Error changing order status');
+    } finally {
+      setState(() {
+        isLoading = false;
+      });
+    }
+  }
+
+  Future<void> sendNotification({
+    required List<int> userIds,
+    required String title,
+    required String body,
+  }) async {
+    String notificationUrl = URL_SEND_NOTIFICATION;
+
+    try {
+      final response = await http.post(
+        Uri.parse(notificationUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_ids': userIds,
+          'title': title,
+          'body': body,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print('Notification sent successfully');
+      } else {
+        print('Failed to send notification: ${response.statusCode}');
+        print('Response body: ${response.body}');
+      }
+    } catch (e) {
+      print('Error sending notification: $e');
+    }
+  }
+
+  void updateSalesmanStatus(bool status) async {
+    final response = await http.put(
+      Uri.parse('https://hrsps.com/login/api/drivers/$salesmanId'),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'active': status.toString(),
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      // Handle successful response
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setString('status', status.toString());
+      print('Status updated successfully');
+    } else {
+      // Handle error response
+      print('Failed to update status');
+    }
   }
 
   Stack notificationCard({int count = 0}) {
@@ -392,6 +598,7 @@ class _ShipmentsState extends State<Shipments> {
     var productsArray,
     int quantity = 0,
     int id = 0,
+    int userId = 0,
     String createdAt = "",
     String updatedAt = "",
     String resturantAdress = "",
@@ -599,10 +806,16 @@ class _ShipmentsState extends State<Shipments> {
                           onTap: () {
                             showModalBottomSheet(
                               context: context,
+                              isScrollControlled: true,
+                              backgroundColor: Colors.white,
                               builder: (context) {
-                                return ProductDetailsBottomSheet(
+                                return FractionallySizedBox(
+                                  heightFactor: 0.85,
+                                  child: ProductDetailsBottomSheet(
                                     total: cod_amount.toString(),
-                                    productsArray: productsArray);
+                                    productsArray: productsArray,
+                                  ),
+                                );
                               },
                             );
                           },
@@ -674,7 +887,9 @@ class _ShipmentsState extends State<Shipments> {
                                                 onTap: () async {
                                                   await changeOrderStatus(
                                                       tracking_number,
-                                                      "canceled");
+                                                      "canceled",
+                                                      userId,
+                                                      'تم الغاء طلبك');
                                                   Fluttertoast.showToast(
                                                     msg: 'لقد تم الغاء الطلب',
                                                     backgroundColor:
@@ -775,10 +990,14 @@ class _ShipmentsState extends State<Shipments> {
                                                   status == "ready_for_delivery"
                                                       ? await changeOrderStatus(
                                                           tracking_number,
-                                                          "in_delivery")
+                                                          "in_delivery",
+                                                          userId,
+                                                          'طلبك الان اصبح قيد التوصيل')
                                                       : await changeOrderStatus(
                                                           tracking_number,
-                                                          "delivered");
+                                                          "delivered",
+                                                          userId,
+                                                          'تم تسليم طلبك');
 
                                                   // Show toast message
                                                   Fluttertoast.showToast(
@@ -998,112 +1217,108 @@ class ProductDetailsBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 400,
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
-            child: Column(
-              children: [
-                const Row(
-                  children: [
-                    Text(
-                      "تفاصيل الطلبية",
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Text(
-                      "عدد المنتجات : ${productsArray.length} ",
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(
-                      width: 50,
-                    ),
-                    Text(
-                      "المجموع الكلي : $total",
-                      style: const TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 10, left: 10, right: 10),
+          child: Column(
+            children: [
+              const Row(
+                children: [
+                  Text(
+                    "تفاصيل الطلبية",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Text(
+                    "عدد المنتجات : ${productsArray.length} ",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(
+                    width: 50,
+                  ),
+                  Text(
+                    "المجموع الكلي : $total",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: ListView.builder(
-              itemCount: productsArray.length,
-              shrinkWrap: true,
-              itemBuilder: (context, index) {
-                final product = productsArray[index];
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView.builder(
+            itemCount: productsArray.length,
+            shrinkWrap: true,
+            itemBuilder: (context, index) {
+              final product = productsArray[index];
 
-                return Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Row(
-                        children: [
-                          Visibility(
-                            visible: product["product"] == null ? false : true,
-                            child: Expanded(
-                              child: Image.network(
-                                product["product"] == null
-                                    ? "-"
-                                    : product["product"]['image'],
-                                height: 100,
-                                width: 100,
-                                fit: BoxFit.cover,
-                              ),
+              return Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      children: [
+                        Visibility(
+                          visible: product["product"] == null ? false : true,
+                          child: Expanded(
+                            child: Image.network(
+                              product["product"] == null
+                                  ? "-"
+                                  : product["product"]['image'],
+                              height: 100,
+                              width: 100,
+                              fit: BoxFit.cover,
                             ),
                           ),
-                          const SizedBox(
-                            width: 10,
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  product["product"] == null
-                                      ? "-"
-                                      : "أسم المنتج : ${product["product"]['name']}",
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14),
-                                ),
-                                const SizedBox(
-                                  height: 5,
-                                ),
-                                Text(
-                                  product["product"] == null
-                                      ? "-"
-                                      : "سعر المنتج : ${product["product"]['price']}",
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14),
-                                ),
-                                const SizedBox(
-                                  height: 5,
-                                ),
-                                Text(
-                                  product["product"] == null
-                                      ? "-"
-                                      : "الكمية : ${product['qty']}",
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14),
-                                ),
-                                const SizedBox(
-                                  height: 5,
-                                ),
-                                Text(
+                        ),
+                        const SizedBox(
+                          width: 10,
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                product["product"] == null
+                                    ? "-"
+                                    : "أسم المنتج : ${product["product"]['name']}",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(
+                                height: 5,
+                              ),
+                              Text(
+                                product["product"] == null
+                                    ? "-"
+                                    : "سعر المنتج : ${product["product"]['price']}",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(
+                                height: 5,
+                              ),
+                              Text(
+                                product["product"] == null
+                                    ? "-"
+                                    : "الكمية : ${product['qty']}",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(
+                                height: 5,
+                              ),
+                              Visibility(
+                                visible: product["components"].isNotEmpty,
+                                child: Text(
                                   product["product"] == null
                                       ? "-"
                                       : "المكونات:",
@@ -1112,29 +1327,31 @@ class ProductDetailsBottomSheet extends StatelessWidget {
                                     fontSize: 16,
                                   ),
                                 ),
-                                const SizedBox(height: 5),
-                                Visibility(
-                                  visible:
-                                      product["product"] == null ? false : true,
-                                  child: SizedBox(
-                                    child: ListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: product['components'].length,
-                                      itemBuilder: (context, index) {
-                                        final component =
-                                            product['components'][index];
-                                        return Text(
-                                          "- ${component['com_name']}: ${component['com_price']}.",
-                                          style: const TextStyle(fontSize: 14),
-                                        );
-                                      },
-                                    ),
+                              ),
+                              const SizedBox(height: 5),
+                              Visibility(
+                                visible: product["components"].isNotEmpty,
+                                child: SizedBox(
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: product['components'].length,
+                                    itemBuilder: (context, index) {
+                                      final component =
+                                          product['components'][index];
+                                      return Text(
+                                        "- ${component['com_name']}: ${component['com_price']}.",
+                                        style: const TextStyle(fontSize: 14),
+                                      );
+                                    },
                                   ),
                                 ),
-                                const SizedBox(height: 5),
-                                Text(
+                              ),
+                              const SizedBox(height: 5),
+                              Visibility(
+                                visible: product['drinks'].isNotEmpty,
+                                child: Text(
                                   product["product"] == null
                                       ? "-"
                                       : "المشروبات:",
@@ -1143,44 +1360,43 @@ class ProductDetailsBottomSheet extends StatelessWidget {
                                     fontSize: 16,
                                   ),
                                 ),
-                                const SizedBox(height: 5),
-                                Visibility(
-                                  visible:
-                                      product["product"] == null ? false : true,
-                                  child: SizedBox(
-                                    child: ListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: product['drinks'].length,
-                                      itemBuilder: (context, index) {
-                                        final drink = product['drinks'][index];
-                                        return Text(
-                                          "- ${drink['drink_name']}: ${drink['drink_price']}.",
-                                          style: const TextStyle(fontSize: 14),
-                                        );
-                                      },
-                                    ),
+                              ),
+                              const SizedBox(height: 5),
+                              Visibility(
+                                visible: product['drinks'].isNotEmpty,
+                                child: SizedBox(
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    physics:
+                                        const NeverScrollableScrollPhysics(),
+                                    itemCount: product['drinks'].length,
+                                    itemBuilder: (context, index) {
+                                      final drink = product['drinks'][index];
+                                      return Text(
+                                        "- ${drink['drink_name']}: ${drink['drink_price']}.",
+                                        style: const TextStyle(fontSize: 14),
+                                      );
+                                    },
                                   ),
                                 ),
-                              ],
-                            ),
-                          )
-                        ],
-                      ),
+                              ),
+                            ],
+                          ),
+                        )
+                      ],
                     ),
-                    Container(
-                      width: double.infinity,
-                      height: 1,
-                      color: Colors.grey,
-                    )
-                  ],
-                );
-              },
-            ),
+                  ),
+                  Container(
+                    width: double.infinity,
+                    height: 1,
+                    color: Colors.grey,
+                  )
+                ],
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

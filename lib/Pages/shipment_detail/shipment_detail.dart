@@ -741,7 +741,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
               ),
               Container(
                 width: 280,
-                height: 180,
+                // height: 180,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
                   color: Colors.white,
@@ -782,28 +782,30 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                           const SizedBox(
                             width: 15,
                           ),
-                          SizedBox(
-                            // width: 300,
+                          Expanded(
+                            child: SizedBox(
+                              // width: 300,
 
-                            child: Column(
-                              children: [
-                                Text(
-                                  customerAdress.length > 70
-                                      ? 'العنوان: ${customerAdress.substring(0, 70)}...'
-                                      : "العنوان: $customerAdress",
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15),
-                                ),
-                                Text(
-                                  customerNear.length > 70
-                                      ? 'بالقرب من: ${customerNear.substring(0, 70)}...'
-                                      : 'بالقرب من: $customerNear',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15),
-                                ),
-                              ],
+                              child: Column(
+                                children: [
+                                  Text(
+                                    customerAdress.length > 70
+                                        ? 'العنوان: ${customerAdress.substring(0, 70)}...'
+                                        : "العنوان: $customerAdress",
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15),
+                                  ),
+                                  Text(
+                                    customerNear.length > 70
+                                        ? 'بالقرب من: ${customerNear.substring(0, 70)}...'
+                                        : 'بالقرب من: $customerNear',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15),
+                                  ),
+                                ],
+                              ),
                             ),
                           )
                         ],

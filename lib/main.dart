@@ -37,6 +37,7 @@ class _OptimusState extends State<Optimus> {
   late final FirebaseAnalyticsObserver observer;
   bool signIn = false;
   String status = "";
+
   @override
   void initState() {
     super.initState();
@@ -70,7 +71,6 @@ class _OptimusState extends State<Optimus> {
 
   Future<void> requestFirebasePermissions() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
-
     NotificationSettings settings = await messaging.requestPermission(
       alert: true,
       announcement: false,
@@ -150,7 +150,7 @@ class _OptimusState extends State<Optimus> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('en', ''), 
+        Locale('en', ''),
         Locale('ar', 'AE'),
       ],
       locale: locale,

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:optimus_opost/Components/button_widget/button_widget.dart';
@@ -19,11 +20,12 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   TextEditingController mobileController = TextEditingController();
   TextEditingController passwordController = TextEditingController();
-
+  String myToken = "";
   @override
   void initState() {
     super.initState();
     loadData();
+    getToken();
   }
 
   Future<void> loadData() async {
@@ -182,6 +184,44 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> getToken() async {
+    try {
+      myToken = (await FirebaseMessaging.instance.getToken())!;
+
+      print("FCM Token: $myToken");
+    } catch (e) {
+      print("Error getting token: $e");
+    }
+  }
+
+  Future<void> sendTokenToServer(String token, String barrierToken) async {
+    print(barrierToken);
+
+    String apiUrl = URL_UPDATE_TOKEN;
+
+    try {
+      final response = await http.post(
+        Uri.parse(apiUrl),
+        headers: {
+          "Authorization": "Bearer $barrierToken",
+          "Content-Type": "application/json",
+        },
+        body: jsonEncode({
+          "fcm_token": token,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        print("Token sent successfully!");
+      } else {
+        print("Failed to send token. Status code: ${response.statusCode}");
+        print("Response body: ${response.body}");
+      }
+    } catch (e) {
+      print("Error sending token: $e");
+    }
+  }
+
   loginFunction() async {
     var url = URL_LOGIN;
     var response = await http.post(Uri.parse(url), body: {
@@ -192,12 +232,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (data['status'] == 'true') {
       Navigator.of(context, rootNavigator: true).pop();
       SharedPreferences prefs = await SharedPreferences.getInstance();
-      int role_id = data["user"]['role_id'] ?? 1;
-      if (role_id == 3) {
-        
+      String role_id = data["user"]['role_id'].toString() ?? "1";
+      if (role_id == "3") {
         await prefs.setString('phone', mobileController.text);
-        await prefs.setString(
-            'salesmanId', data["user"]['id'].toString());
+        await prefs.setString('salesmanId', data["user"]['id'].toString());
         print(data["user"]['id'].toString());
         await prefs.setString('password', passwordController.text);
         await prefs.setString('active', data["user"]['active']);
@@ -205,6 +243,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await prefs.setString('driver_serial', data["user"]['serial_number']);
         await prefs.setBool('login', true);
 
+        await sendTokenToServer(myToken, data["access_token"]);
         Fluttertoast.showToast(
           msg: 'تم تسجيل الدخول بنجاح',
         );
