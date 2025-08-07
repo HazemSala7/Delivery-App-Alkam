@@ -1,4 +1,4 @@
-package delivery.business.jfood
+package j.food.business
 
 import io.flutter.embedding.android.FlutterActivity
 

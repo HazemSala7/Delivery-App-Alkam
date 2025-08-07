@@ -45,9 +45,28 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:547928555422:android:cf76cb4a79af1af144208f",
+        "mobilesdk_app_id": "1:547928555422:android:0cc9584596adbfa144208f",
         "android_client_info": {
-          "package_name": "delivery.business.jfood"
+          "package_name": "j.food.business"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:547928555422:android:9299373e43c5557744208f",
+        "android_client_info": {
+          "package_name": "j.food.com"
         }
       },
       "oauth_client": [],
@@ -86,25 +105,6 @@
         "mobilesdk_app_id": "1:547928555422:android:ec0d29f2311bbdd544208f",
         "android_client_info": {
           "package_name": "jfood.business.perfect"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDWTvbB0gMgADIt6iisVPpgV2V72ESUqSM"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:547928555422:android:eeeff95fdaff00b144208f",
-        "android_client_info": {
-          "package_name": "jfood.hrsps.com"
         }
       },
       "oauth_client": [],

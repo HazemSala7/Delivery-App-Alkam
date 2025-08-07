@@ -6,7 +6,7 @@
 	<string>development</string>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)delivery.business.jfoodadv</string>
+		<string>$(AppIdentifierPrefix)j.food.businessadv</string>
 	</array>
 </dict>
 </plist>

@@ -37,12 +37,13 @@ class _ShipmentsState extends State<Shipments> {
   String driverSerial = "";
   String driverName = "";
   List<dynamic> previousShipments = [];
-  bool _isDialogShowing = false;
   late List<String> seenShipmentIds;
   int currentPage = 1;
   bool hasMorePages = true;
   bool _loading = false;
   final ScrollController _scrollController = ScrollController();
+  Map<String, dynamic>? _newShipment;
+  Timer? _autoDismissTimer;
 
   @override
   void initState() {
@@ -58,7 +59,7 @@ class _ShipmentsState extends State<Shipments> {
         fetchShipments(false, page: currentPage + 1);
       }
     });
-    _timer = Timer.periodic(const Duration(seconds: 20), (timer) {
+    _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
       fetchShipments(false, page: currentPage);
     });
   }
@@ -102,7 +103,7 @@ class _ShipmentsState extends State<Shipments> {
               : clicked[2]
                   ? "$URL_SHIPMENTS_STATUS/in_delivery/$salesmanId"
                   : "$URL_SHIPMENTS_STATUS/delivered/$salesmanId";
-
+      print("$URL_SHIPMENTS/$salesmanId");
       String url = "$baseUrl?page=$page";
       var response = await getRequest(url);
 
@@ -120,16 +121,26 @@ class _ShipmentsState extends State<Shipments> {
           previousShipments.addAll(newShipments);
         }
 
-        if (clicked[0] && page == 1 && !_isDialogShowing) {
-          final newOnes = newShipments.where((shipment) {
-            final id = shipment["id"].toString();
-            return !seenShipmentIds.contains(id);
-          }).toList();
+        if (clicked[0] && page == 1) {
+          final firstShipment =
+              newShipments.isNotEmpty ? newShipments.first : null;
+          if (firstShipment != null) {
+            final id = firstShipment["id"].toString();
+            if (!seenShipmentIds.contains(id)) {
+              setState(() {
+                _newShipment = firstShipment;
+              });
 
-          print(newOnes);
-          if (newOnes.isNotEmpty) {
-            _isDialogShowing = true;
-            showNewShipmentDialog(context, newOnes.first);
+              _autoDismissTimer?.cancel();
+              _autoDismissTimer = Timer(const Duration(seconds: 20), () {
+                if (_newShipment != null) {
+                  rejectShipment(_newShipment!["id"].toString());
+                  setState(() {
+                    _newShipment = null;
+                  });
+                }
+              });
+            }
           }
 
           final updatedIds =
@@ -153,58 +164,6 @@ class _ShipmentsState extends State<Shipments> {
         }
       });
     }
-  }
-
-  void showNewShipmentDialog(BuildContext context, dynamic shipment) {
-    Timer? autoDismissTimer;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        autoDismissTimer = Timer(const Duration(seconds: 20), () {
-          if (Navigator.of(ctx).canPop()) {
-            Navigator.of(ctx).pop();
-            _isDialogShowing = false;
-            rejectShipment(shipment["id"].toString());
-          }
-        });
-
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          title: const Text(
-            "طلب جديد",
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          content: const Text("هناك طلب جديد مرفق لك، هل تريد استلام توصيله؟",
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          actions: [
-            TextButton(
-              onPressed: () {
-                autoDismissTimer?.cancel();
-                Navigator.of(ctx).pop();
-                _isDialogShowing = false;
-                confirmShipment(shipment["id"].toString());
-              },
-              child: const Text("تأكيد",
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-            TextButton(
-              onPressed: () {
-                autoDismissTimer?.cancel();
-                Navigator.of(ctx).pop();
-                _isDialogShowing = false;
-                rejectShipment(shipment["id"].toString());
-              },
-              child: const Text("الغاء",
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        );
-      },
-    ).then((_) {
-      _isDialogShowing = false;
-    });
   }
 
   Future<void> confirmShipment(String shipmentId) async {
@@ -232,6 +191,7 @@ class _ShipmentsState extends State<Shipments> {
       );
 
       if (res != null && res["status"] == true) {
+        fetchShipments(false, page: currentPage);
         Fluttertoast.showToast(msg: "تم رفض الطلب");
       } else {
         Fluttertoast.showToast(msg: "حدث مشكلة اثناء رفض استقبال الطلب");
@@ -337,6 +297,8 @@ class _ShipmentsState extends State<Shipments> {
                           var shipments = snapshot.data;
                           return Column(
                             children: [
+                              if (_newShipment != null)
+                                newShipmentCard(context, _newShipment!),
                               ListView.builder(
                                 physics: const NeverScrollableScrollPhysics(),
                                 shrinkWrap: true,
@@ -384,8 +346,8 @@ class _ShipmentsState extends State<Shipments> {
                                       cod_amount: double.parse(shipments[index]["total"].toString()),
                                       createdAt: shipments[index]["created_at"] ?? "-",
                                       updatedAt: shipments[index]["updated_at"] ?? "-",
-                                      customerAdress: shipments[index]["address"] ?? "-",
-                                      customerNear: shipments[index]["area"] ?? "-",
+                                      customerAdress: shipments[index]["area"] ?? "-",
+                                      customerNear: shipments[index]["address"] ?? "-",
                                       resturantAdress: shipments[index]["restaurant"] == null ? "-" : shipments[index]["restaurant"]["address"] ?? "-",
                                       userId: shipments[index]["user_id"] ?? 1);
                                 },
@@ -402,6 +364,80 @@ class _ShipmentsState extends State<Shipments> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget newShipmentCard(BuildContext context, Map<String, dynamic> shipment) {
+    return Card(
+      margin: const EdgeInsets.all(10),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TweenAnimationBuilder<Duration>(
+              duration: const Duration(seconds: 20),
+              tween:
+                  Tween(begin: const Duration(seconds: 20), end: Duration.zero),
+              onEnd: () {},
+              builder: (BuildContext context, Duration value, Widget? child) {
+                final seconds = value.inSeconds;
+                return Text(
+                  'سيتم الإلغاء خلال: $seconds ثانية',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.red),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
+            Text("طلب جديد رقم: ${shipment["id"]}"),
+            Text("من: ${shipment["restaurant"]?["name"] ?? "-"}"),
+            Text("إلى: ${shipment["customer_name"] ?? "-"}"),
+            Text("العنوان: ${shipment["area"] ?? "-"}"),
+            Text("بالقرب من: ${shipment["address"] ?? "-"}"),
+            Text("المبلغ: ${shipment["total"] ?? "-"}"),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                MaterialButton(
+                  color: MAINCOLOR,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  onPressed: () {
+                    _autoDismissTimer?.cancel();
+                    confirmShipment(shipment["id"].toString());
+                    setState(() {
+                      _newShipment = null;
+                    });
+                  },
+                  child: const Text(
+                    "تأكيد",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                MaterialButton(
+                  onPressed: () {
+                    _autoDismissTimer?.cancel();
+                    rejectShipment(shipment["id"].toString());
+                    setState(() {
+                      _newShipment = null;
+                    });
+                  },
+                  shape: RoundedRectangleBorder(
+                      side: BorderSide(color: MAINCOLOR),
+                      borderRadius: BorderRadius.circular(12)),
+                  child: const Text(
+                    "رفض",
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
