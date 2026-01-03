@@ -13,19 +13,19 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-if (Platform.isIOS) {
-      await Firebase.initializeApp(
-        options: const FirebaseOptions(
-          apiKey: 'AIzaSyDXBSsEvwOzWFqjPnsPXBHXM-xLcxuYwl8',
-          appId: '1:547928555422:ios:bdbbab935d336aab44208f',
-          messagingSenderId: '547928555422',
-          projectId: 'j-food-2a4d7',
-          storageBucket: 'j-food-2a4d7.firebasestorage.app',
-        ),
-      );
-    } else {
-      await Firebase.initializeApp();
-    }
+  if (Platform.isIOS) {
+    await Firebase.initializeApp(
+      options: const FirebaseOptions(
+        apiKey: 'AIzaSyDXBSsEvwOzWFqjPnsPXBHXM-xLcxuYwl8',
+        appId: '1:547928555422:ios:bdbbab935d336aab44208f',
+        messagingSenderId: '547928555422',
+        projectId: 'j-food-2a4d7',
+        storageBucket: 'j-food-2a4d7.firebasestorage.app',
+      ),
+    );
+  } else {
+    await Firebase.initializeApp();
+  }
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   runApp(const Optimus());
 }

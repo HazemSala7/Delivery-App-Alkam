@@ -6,11 +6,12 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:optimus_opost/Constants/constants.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
 import 'package:optimus_opost/Pages/notifications/notifications.dart';
-import 'package:optimus_opost/Pages/shipment_detail/shipment_detail.dart';
+import 'package:optimus_opost/Pages/shipments/driver_orders/driver_orders.dart';
+import 'package:optimus_opost/Pages/shipments/shipment_card_widget.dart';
 import 'package:optimus_opost/Server/server.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Server/functions.dart';
+// ignore: depend_on_referenced_packages
 import 'package:http/http.dart' as http;
 
 class Shipments extends StatefulWidget {
@@ -27,7 +28,6 @@ class Shipments extends StatefulWidget {
 
 class _ShipmentsState extends State<Shipments> {
   bool searchCheck = false;
-  List<bool> clicked = [true, false, false, false];
   TextEditingController searchController = TextEditingController();
   String salesmanId = "";
   bool isLoading = false;
@@ -37,410 +37,260 @@ class _ShipmentsState extends State<Shipments> {
   String driverSerial = "";
   String driverName = "";
   List<dynamic> previousShipments = [];
-  late List<String> seenShipmentIds;
+  List<String> seenShipmentIds = [];
   int currentPage = 1;
   bool hasMorePages = true;
-  bool _loading = false;
   final ScrollController _scrollController = ScrollController();
-  Map<String, dynamic>? _newShipment;
-  Timer? _autoDismissTimer;
+  final String _PREF_PENDING_AUTO_REJECT = 'pending_auto_reject';
+  List<String> rejectedShipmentIds = [];
+  List<Map<String, dynamic>> _newShipmentsQueue = [];
+  Map<String, Timer> _autoRejectTimers = {}; // Renamed from _autoDismissTimers
+  Map<String, Timer> _hideButtonTimers = {};
+  List<Map<String, dynamic>> _activeShipments = [];
+  Map<String, bool> _showDeliveryButtonForShipment = {};
+  Map<String, int> _remainingSecondsForShipment = {};
 
   @override
   void initState() {
     super.initState();
     _streamController = StreamController<List<dynamic>>();
-    status = widget.status == "true" ? true : false;
+    status = widget.status == "true";
+    // restore auto-reject timers from prefs before first fetch
+    _restoreAutoRejectTimers();
+    // initial load
     loadData();
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >=
-              _scrollController.position.maxScrollExtent - 200 &&
-          !isLoading &&
-          hasMorePages) {
-        fetchShipments(false, page: currentPage + 1);
+    // restore any existing delivery button hide timers
+    _checkDeliveryButtonTimer();
+    // poll periodically for updates
+    _timer = Timer.periodic(const Duration(seconds: 20), (timer) async {
+      if (!mounted) return;
+      await fetchShipments(false, page: 1);
+    });
+  }
+
+  /// Restore/hydrate any delivery-button hide timers previously saved in prefs.
+  Future<void> _checkDeliveryButtonTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hideTimes = prefs.getStringList('delivery_button_hide_times') ?? [];
+
+    // Cancel and clear previous timers/state
+    _hideButtonTimers.forEach((_, t) => t.cancel());
+    _hideButtonTimers.clear();
+    _showDeliveryButtonForShipment.clear();
+    _remainingSecondsForShipment.clear();
+
+    final hideTimesCopy = List<String>.from(hideTimes);
+    final hideTimesToRemove = <String>[];
+
+    for (var entry in hideTimesCopy) {
+      final parts = entry.split('|');
+      if (parts.length != 2) continue;
+      final shipmentId = parts[0];
+      final hideTimeMillis = int.tryParse(parts[1]);
+      if (hideTimeMillis == null) continue;
+
+      final endTime = DateTime.fromMillisecondsSinceEpoch(hideTimeMillis);
+      final now = DateTime.now();
+
+      if (now.isBefore(endTime)) {
+        // mark initially
+        _showDeliveryButtonForShipment[shipmentId] = false;
+        _remainingSecondsForShipment[shipmentId] =
+            endTime.difference(now).inSeconds;
+
+        // create a per-second timer that updates the remaining seconds and when complete, toggles show
+        _hideButtonTimers[shipmentId]?.cancel();
+        _hideButtonTimers[shipmentId] =
+            Timer.periodic(const Duration(seconds: 1), (t) {
+          final current = DateTime.now();
+          if (current.isBefore(endTime)) {
+            if (!mounted) return;
+            setState(() {
+              _remainingSecondsForShipment[shipmentId] =
+                  endTime.difference(current).inSeconds;
+            });
+          } else {
+            t.cancel();
+            _hideButtonTimers.remove(shipmentId);
+            if (!mounted) return;
+            setState(() {
+              _showDeliveryButtonForShipment[shipmentId] = true;
+              _remainingSecondsForShipment[shipmentId] = 0;
+            });
+            hideTimesToRemove.add(entry);
+          }
+        });
+      } else {
+        // already expired
+        _showDeliveryButtonForShipment[shipmentId] = true;
+        _remainingSecondsForShipment[shipmentId] = 0;
+        hideTimesToRemove.add(entry);
       }
-    });
-    _timer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      fetchShipments(false, page: currentPage);
-    });
+    }
+
+    if (hideTimesToRemove.isNotEmpty) {
+      final newHideTimes =
+          hideTimes.where((e) => !hideTimesToRemove.contains(e)).toList();
+      await prefs.setStringList('delivery_button_hide_times', newHideTimes);
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _streamController.close();
+    _autoRejectTimers.forEach((_, t) => t.cancel());
+    _hideButtonTimers.forEach((_, t) => t.cancel());
+    if (!_streamController.isClosed) {
+      _streamController.close();
+    }
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> loadData() async {
     SharedPreferences prefs = await SharedPreferences.getInstance();
+
     setState(() {
       salesmanId = prefs.getString('salesmanId') ?? "";
       driverName = prefs.getString('driver_name') ?? "";
       driverSerial = prefs.getString('driver_serial') ?? "";
       seenShipmentIds = prefs.getStringList('seenShipmentIds') ?? [];
+      rejectedShipmentIds = prefs.getStringList('rejectedShipmentIds') ?? [];
+      isLoading = true;
     });
-    await fetchShipments(false);
+
+    await fetchShipments(false, page: 1);
+  }
+
+  /// Helper to persist seen id in SharedPreferences (idempotent)
+  Future<void> _markSeenId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    seenShipmentIds = prefs.getStringList('seenShipmentIds') ?? [];
+    if (!seenShipmentIds.contains(id)) {
+      seenShipmentIds.add(id);
+      await prefs.setStringList('seenShipmentIds', seenShipmentIds);
+    }
+  }
+
+  /// Helper to remove id from seen list (idempotent)
+  Future<void> _unmarkSeenId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList('seenShipmentIds') ?? [];
+    if (list.contains(id)) {
+      list.remove(id);
+      await prefs.setStringList('seenShipmentIds', list);
+      // update in-memory copy too
+      seenShipmentIds = list;
+    } else {
+      // still ensure in-memory
+      seenShipmentIds = list;
+    }
   }
 
   Future<void> fetchShipments(bool fromChange, {int page = 1}) async {
-    if (fromChange) {
-      setState(() {
-        isLoading = true;
-      });
-    }
-    setState(() {
-      if (page > 1) {
-        _loading = true;
-      }
-    });
-
     try {
-      String baseUrl = clicked[0]
-          ? "$URL_SHIPMENTS/$salesmanId"
-          : clicked[1]
-              ? "$URL_SHIPMENTS_STATUS/ready_for_delivery/$salesmanId"
-              : clicked[2]
-                  ? "$URL_SHIPMENTS_STATUS/in_delivery/$salesmanId"
-                  : "$URL_SHIPMENTS_STATUS/delivered/$salesmanId";
-      print("$URL_SHIPMENTS/$salesmanId");
-      String url = "$baseUrl?page=$page";
-      var response = await getRequest(url);
+      if (page == 1 && !fromChange) {
+        if (mounted) setState(() => isLoading = true);
+      }
 
+      final String url = "$URL_SHIPMENTS/$salesmanId?page=$page";
+      final response = await getRequest(url);
+      print(url);
       if (response != null &&
           response["orders"] != null &&
           response["orders"]["data"] is List) {
-        List<dynamic> newShipments = response["orders"]["data"];
-        int lastPage = response["orders"]["last_page"];
-        currentPage = response["orders"]["current_page"];
+        final List<dynamic> newShipments =
+            List<dynamic>.from(response["orders"]["data"]);
+
+        int lastPage = response["orders"]["last_page"] ?? 1;
+        currentPage = response["orders"]["current_page"] ?? 1;
         hasMorePages = currentPage < lastPage;
 
-        if (page == 1) {
-          previousShipments = newShipments;
-        } else {
-          previousShipments.addAll(newShipments);
-        }
+        // Load seenIDs from prefs (source of truth)
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        seenShipmentIds = prefs.getStringList('seenShipmentIds') ?? [];
+        rejectedShipmentIds = prefs.getStringList('rejectedShipmentIds') ?? [];
+        List<String> activeIds = prefs.getStringList('activeShipmentIds') ?? [];
+        final pendingRejects = await _getPendingAutoRejectMap();
 
-        if (clicked[0] && page == 1) {
-          final firstShipment =
-              newShipments.isNotEmpty ? newShipments.first : null;
-          if (firstShipment != null) {
-            final id = firstShipment["id"].toString();
-            if (!seenShipmentIds.contains(id)) {
-              setState(() {
-                _newShipment = firstShipment;
-              });
+        final List<Map<String, dynamic>> tmpActive = [];
+        final List<Map<String, dynamic>> tmpNewQueue = [];
 
-              _autoDismissTimer?.cancel();
-              _autoDismissTimer = Timer(const Duration(seconds: 20), () {
-                if (_newShipment != null) {
-                  rejectShipment(_newShipment!["id"].toString());
-                  setState(() {
-                    _newShipment = null;
-                  });
-                }
-              });
+        for (var shipment in newShipments) {
+          final String id = shipment["id"].toString();
+          final String status = shipment["status"]?.toString() ?? "";
+
+          // If server reports delivered/canceled, clean up any local state
+          if (status == "delivered" || status == "canceled") {
+            // remove from seen/active/pending and cancel timers
+            if (seenShipmentIds.contains(id)) {
+              seenShipmentIds.remove(id);
             }
+            if (activeIds.contains(id)) {
+              activeIds.remove(id);
+            }
+            _autoRejectTimers[id]?.cancel();
+            _autoRejectTimers.remove(id);
+            await _removePendingAutoReject(id);
+            await prefs.setStringList('seenShipmentIds', seenShipmentIds);
+            await prefs.setStringList('activeShipmentIds', activeIds);
+            continue;
           }
 
-          final updatedIds =
-              previousShipments.map((e) => e["id"].toString()).toList();
-          SharedPreferences prefs = await SharedPreferences.getInstance();
-          await prefs.setStringList('seenShipmentIds', updatedIds);
-          seenShipmentIds = updatedIds;
+          if (rejectedShipmentIds.contains(id)) {
+            rejectedShipmentIds.remove(id);
+            await prefs.setStringList(
+                'rejectedShipmentIds', rejectedShipmentIds);
+          }
+
+          // Confirmed/active shipments
+          if (activeIds.contains(id) || seenShipmentIds.contains(id)) {
+            tmpActive.add(Map<String, dynamic>.from(shipment));
+            continue;
+          }
+
+          // Pending (we saw this earlier and persisted an auto-reject time)
+          if (pendingRejects.containsKey(id)) {
+            tmpNewQueue.add(Map<String, dynamic>.from(shipment));
+            // restore timer if it's not in memory
+            if (_autoRejectTimers[id] == null) {
+              _startAutoRejectTimer(id, endTimeMillis: pendingRejects[id]);
+            }
+            continue;
+          }
+
+          // Brand-new shipment: add to new queue and create persisted auto-reject timer
+          tmpNewQueue.add(Map<String, dynamic>.from(shipment));
+          _startAutoRejectTimer(
+              id); // will persist pending entry with default 20s expiry
         }
 
-        _streamController.add(previousShipments);
+// Persist seen/active changes if any were modified above
+        await prefs.setStringList('seenShipmentIds', seenShipmentIds);
+        await prefs.setStringList('activeShipmentIds', activeIds);
+
+// Commit to in-memory lists and push to stream
+        if (!mounted) return;
+        setState(() {
+          _activeShipments = tmpActive;
+          _newShipmentsQueue = tmpNewQueue;
+        });
+
+// push to stream (new first)
+        if (!_streamController.isClosed) {
+          _streamController.add([..._newShipmentsQueue, ..._activeShipments]);
+        }
       } else {
-        _streamController.add([]);
+        if (!_streamController.isClosed) _streamController.add([]);
       }
-    } catch (e) {
-      _streamController.addError('Failed to load shipments');
+    } catch (e, st) {
+      if (!_streamController.isClosed) {
+        _streamController.addError('Failed to load shipments');
+      }
+      debugPrint("fetchShipments error: $e\n$st");
     } finally {
-      setState(() {
-        isLoading = false;
-        if (page > 1) {
-          _loading = false;
-        }
-      });
+      if (mounted) setState(() => isLoading = false);
     }
-  }
-
-  Future<void> confirmShipment(String shipmentId) async {
-    try {
-      final res = await postRequest(
-        "$URL_CONFIRM_SHIPMENT/$shipmentId",
-        {},
-      );
-
-      if (res != null && res["status"] == true) {
-        Fluttertoast.showToast(msg: "تم استقبال الطلب");
-      } else {
-        Fluttertoast.showToast(msg: "حدث مشكلة اثناء تاكيد استقبال الطلب");
-      }
-    } catch (e) {
-      debugPrint("Error confirming shipment: $e");
-    }
-  }
-
-  Future<void> rejectShipment(String shipmentId) async {
-    try {
-      final res = await postRequest(
-        "$URL_REJECT_SHIPMENT/$shipmentId",
-        {},
-      );
-
-      if (res != null && res["status"] == true) {
-        fetchShipments(false, page: currentPage);
-        Fluttertoast.showToast(msg: "تم رفض الطلب");
-      } else {
-        Fluttertoast.showToast(msg: "حدث مشكلة اثناء رفض استقبال الطلب");
-      }
-    } catch (e) {
-      debugPrint("Error confirming shipment: $e");
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    List<String> status = [
-      "الكل",
-      "استلام من المطعم",
-      "تسليم للعميل",
-      "تم التسليم",
-    ];
-
-    return Container(
-      color: MAINCOLOR,
-      child: SafeArea(
-        child: Scaffold(
-          drawer: _buildDrawer(),
-          appBar: AppBar(
-            centerTitle: true,
-            backgroundColor: MAINCOLOR,
-            iconTheme: const IconThemeData(
-              color: Colors.white,
-            ),
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(25),
-                bottomRight: Radius.circular(25),
-              ),
-            ),
-            title: Text(
-              AppLocalizations.of(context)!.shipments,
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 22,
-                color: Colors.white,
-              ),
-            ),
-            actions: [
-              notificationCard(count: 0),
-            ],
-          ),
-          body: SingleChildScrollView(
-            controller: _scrollController,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 15),
-                  child: SizedBox(
-                    height: 40,
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 10),
-                      child: ListView.builder(
-                          itemCount: status.length,
-                          scrollDirection: Axis.horizontal,
-                          itemBuilder: (context, index) {
-                            return StatusCard(
-                                index: index, name: status[index]);
-                          }),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 50),
-                  child: StreamBuilder(
-                      stream: _streamController.stream,
-                      builder: (context, AsyncSnapshot snapshot) {
-                        if (isLoading ||
-                            snapshot.connectionState ==
-                                ConnectionState.waiting) {
-                          return SizedBox(
-                            width: double.infinity,
-                            height: MediaQuery.of(context).size.height * 0.4,
-                            child: SpinKitPulse(
-                              color: MAINCOLOR,
-                              size: 60,
-                            ),
-                          );
-                        } else if (snapshot.hasError) {
-                          return Center(
-                            child: Text('Error: ${snapshot.error}'),
-                          );
-                        } else if (!snapshot.hasData || snapshot.data.isEmpty) {
-                          return SizedBox(
-                            width: double.infinity,
-                            height: MediaQuery.of(context).size.height * 0.7,
-                            child: const Center(
-                              child: Text(
-                                "لا يوجد شحنات",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 17,
-                                ),
-                              ),
-                            ),
-                          );
-                        } else {
-                          var shipments = snapshot.data;
-                          return Column(
-                            children: [
-                              if (_newShipment != null)
-                                newShipmentCard(context, _newShipment!),
-                              ListView.builder(
-                                physics: const NeverScrollableScrollPhysics(),
-                                shrinkWrap: true,
-                                itemCount: shipments.length,
-                                itemBuilder: (context, int index) {
-                                  return ShipmentCard(
-                                      tracking_number:
-                                          shipments[index]["id"].toString(),
-                                      id: shipments[index]["id"] ?? 1,
-                                      lattitude: shipments[index]["lattitude"]
-                                          .toString(),
-                                      longitude: shipments[index]["longitude"]
-                                          .toString(),
-                                      quantity:
-                                          shipments[index]["items_length"] ?? 0,
-                                      from:
-                                          shipments[index]["restaurant"] == null
-                                              ? "-"
-                                              : shipments[index]["restaurant"]
-                                                      ["name"] ??
-                                                  "-",
-                                      to: shipments[index]["customer_name"] ??
-                                          "-",
-                                      status: shipments[index]["status"] ?? "-",
-                                      productsArray:
-                                          shipments[index]["items"] ?? "-",
-                                      type: shipments[index]["type"] ?? "-",
-                                      business_name:
-                                          shipments[index]["restaurant"] == null
-                                              ? "-"
-                                              : shipments[index]["restaurant"]
-                                                      ["name"] ??
-                                                  "-",
-                                      business_phone:
-                                          shipments[index]["restaurant"] == null
-                                              ? "-"
-                                              : shipments[index]["restaurant"]
-                                                      ["phone_number"] ??
-                                                  "-",
-                                      consignee_name:
-                                          shipments[index]["customer_name"] ?? "-",
-                                      consignee_phone1: shipments[index]["mobile"] ?? "-",
-                                      consignee_phone2: shipments[index]["mobile"] ?? "-",
-                                      items_description: "-",
-                                      cod_amount: double.parse(shipments[index]["total"].toString()),
-                                      createdAt: shipments[index]["created_at"] ?? "-",
-                                      updatedAt: shipments[index]["updated_at"] ?? "-",
-                                      customerAdress: shipments[index]["area"] ?? "-",
-                                      customerNear: shipments[index]["address"] ?? "-",
-                                      resturantAdress: shipments[index]["restaurant"] == null ? "-" : shipments[index]["restaurant"]["address"] ?? "-",
-                                      userId: shipments[index]["user_id"] ?? 1);
-                                },
-                              ),
-                              SizedBox(
-                                height: 10,
-                              ),
-                              if (_loading) CircularProgressIndicator()
-                            ],
-                          );
-                        }
-                      }),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget newShipmentCard(BuildContext context, Map<String, dynamic> shipment) {
-    return Card(
-      margin: const EdgeInsets.all(10),
-      color: Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TweenAnimationBuilder<Duration>(
-              duration: const Duration(seconds: 20),
-              tween:
-                  Tween(begin: const Duration(seconds: 20), end: Duration.zero),
-              onEnd: () {},
-              builder: (BuildContext context, Duration value, Widget? child) {
-                final seconds = value.inSeconds;
-                return Text(
-                  'سيتم الإلغاء خلال: $seconds ثانية',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.bold, color: Colors.red),
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            Text("طلب جديد رقم: ${shipment["id"]}"),
-            Text("من: ${shipment["restaurant"]?["name"] ?? "-"}"),
-            Text("إلى: ${shipment["customer_name"] ?? "-"}"),
-            Text("العنوان: ${shipment["area"] ?? "-"}"),
-            Text("بالقرب من: ${shipment["address"] ?? "-"}"),
-            Text("المبلغ: ${shipment["total"] ?? "-"}"),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                MaterialButton(
-                  color: MAINCOLOR,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  onPressed: () {
-                    _autoDismissTimer?.cancel();
-                    confirmShipment(shipment["id"].toString());
-                    setState(() {
-                      _newShipment = null;
-                    });
-                  },
-                  child: const Text(
-                    "تأكيد",
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                MaterialButton(
-                  onPressed: () {
-                    _autoDismissTimer?.cancel();
-                    rejectShipment(shipment["id"].toString());
-                    setState(() {
-                      _newShipment = null;
-                    });
-                  },
-                  shape: RoundedRectangleBorder(
-                      side: BorderSide(color: MAINCOLOR),
-                      borderRadius: BorderRadius.circular(12)),
-                  child: const Text(
-                    "رفض",
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   Future<dynamic> postRequest(String url, Map<String, dynamic> body) async {
@@ -454,42 +304,306 @@ class _ShipmentsState extends State<Shipments> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         return jsonDecode(response.body);
       } else {
-        throw Exception('Failed POST with status: ${response.statusCode}');
+        debugPrint('Failed POST with status: ${response.statusCode}');
+        return null;
       }
     } catch (e) {
-      print("POST request error: $e");
+      debugPrint("POST request error: $e");
       return null;
     }
   }
 
-  Future<void> changeOrderStatus(
-      String orderId, String status, int userId, String msg) async {
+  Future<void> confirmShipment(String shipmentId) async {
+    try {
+      final res = await postRequest("$URL_CONFIRM_SHIPMENT/$shipmentId", {});
+      if (res != null && res["status"] == true) {
+        // remove pending auto-reject and cancel timer
+        _autoRejectTimers[shipmentId]?.cancel();
+        _autoRejectTimers.remove(shipmentId);
+        await _removePendingAutoReject(shipmentId);
+
+        // persist that it's seen/confirmed (accepted)
+        await _markSeenId(shipmentId);
+
+        // move locally from new -> active if present
+        if (mounted) {
+          setState(() {
+            final matchedIndex = _newShipmentsQueue
+                .indexWhere((s) => s["id"].toString() == shipmentId);
+            if (matchedIndex != -1) {
+              final item =
+                  Map<String, dynamic>.from(_newShipmentsQueue[matchedIndex]);
+              _newShipmentsQueue.removeAt(matchedIndex);
+              if (!_activeShipments
+                  .any((s) => s["id"].toString() == shipmentId)) {
+                _activeShipments.add(item);
+              }
+            }
+          });
+        }
+
+        // persist activeShipmentIds
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        List<String> activeIds = prefs.getStringList('activeShipmentIds') ?? [];
+        if (!activeIds.contains(shipmentId)) {
+          activeIds.add(shipmentId);
+          await prefs.setStringList('activeShipmentIds', activeIds);
+        }
+
+        // Refresh from server to make sure status is consistent
+        if (mounted) await fetchShipments(false, page: 1);
+
+        Fluttertoast.showToast(msg: "تم استقبال الطلب");
+      } else {
+        Fluttertoast.showToast(msg: "حدث مشكلة اثناء تأكيد استقبال الطلب");
+      }
+    } catch (e) {
+      debugPrint("Error confirming shipment: $e");
+      Fluttertoast.showToast(msg: "حدث خطأ أثناء تأكيد الطلب");
+    }
+  }
+
+  /// Start the delivery button hide timer for 2 minutes (preserves state in prefs)
+  Future<void> startDeliveryButtonTimer(String shipmentId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final hideTime = DateTime.now().add(const Duration(minutes: 2));
+
+    List<String> hideTimes =
+        prefs.getStringList('delivery_button_hide_times') ?? [];
+    // keep only latest entry for this id
+    hideTimes.removeWhere((e) => e.startsWith("$shipmentId|"));
+    hideTimes.add("$shipmentId|${hideTime.millisecondsSinceEpoch}");
+    await prefs.setStringList('delivery_button_hide_times', hideTimes);
+
+    if (!mounted) return;
     setState(() {
-      isLoading = true;
+      _showDeliveryButtonForShipment[shipmentId] = false;
+      _remainingSecondsForShipment[shipmentId] = 120;
     });
+
+    // cancel previous timer for this shipment if any
+    _hideButtonTimers[shipmentId]?.cancel();
+    _hideButtonTimers[shipmentId] =
+        Timer.periodic(const Duration(seconds: 1), (timer) async {
+      final now = DateTime.now();
+      // re-read end time from prefs in case app restarted or value changed
+      final stored = (await SharedPreferences.getInstance())
+              .getStringList('delivery_button_hide_times') ??
+          [];
+      final entry = stored.firstWhere((e) => e.startsWith("$shipmentId|"),
+          orElse: () => "");
+      if (entry.isEmpty) {
+        timer.cancel();
+        _hideButtonTimers.remove(shipmentId);
+        if (!mounted) return;
+        setState(() {
+          _showDeliveryButtonForShipment[shipmentId] = true;
+          _remainingSecondsForShipment[shipmentId] = 0;
+        });
+        return;
+      }
+      final millis = int.tryParse(entry.split('|').elementAt(1).trim()) ?? 0;
+      final end = DateTime.fromMillisecondsSinceEpoch(millis);
+
+      if (now.isBefore(end)) {
+        if (!mounted) return;
+        setState(() {
+          _remainingSecondsForShipment[shipmentId] =
+              end.difference(now).inSeconds;
+        });
+      } else {
+        timer.cancel();
+        _hideButtonTimers.remove(shipmentId);
+        if (!mounted) return;
+        setState(() {
+          _showDeliveryButtonForShipment[shipmentId] = true;
+          _remainingSecondsForShipment[shipmentId] = 0;
+        });
+        hideTimes.removeWhere((e) => e.startsWith("$shipmentId|"));
+        await prefs.setStringList('delivery_button_hide_times', hideTimes);
+      }
+    });
+  }
+
+  void _startAutoRejectTimer(String shipmentId, {int? endTimeMillis}) {
+    // cancel existing timer if any
+    _autoRejectTimers[shipmentId]?.cancel();
+
+    final now = DateTime.now();
+    final int endMillis = endTimeMillis ??
+        now.add(const Duration(seconds: 20)).millisecondsSinceEpoch;
+    final end = DateTime.fromMillisecondsSinceEpoch(endMillis);
+    final dur = end.difference(now);
+
+    if (dur <= Duration.zero) {
+      // already expired — trigger immediate rejection
+      _removePendingAutoReject(shipmentId);
+      _rejectShipmentFromTimer(shipmentId);
+      return;
+    }
+
+    // persist pending info so it survives hot restart
+    _persistPendingAutoReject(shipmentId, endMillis);
+
+    _autoRejectTimers[shipmentId] = Timer(dur, () async {
+      _autoRejectTimers.remove(shipmentId);
+      await _removePendingAutoReject(shipmentId);
+      if (!mounted) return;
+      await _rejectShipmentFromTimer(shipmentId);
+    });
+  }
+
+  Future<void> _rejectShipmentFromTimer(String shipmentId) async {
+    try {
+      final res = await postRequest("$URL_REJECT_SHIPMENT/$shipmentId", {});
+      if (res != null && res["status"] == true) {
+        Fluttertoast.showToast(msg: "تم رفض الطلب", timeInSecForIosWeb: 3);
+
+        // persist rejected id
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        rejectedShipmentIds = prefs.getStringList('rejectedShipmentIds') ?? [];
+        if (!rejectedShipmentIds.contains(shipmentId)) {
+          rejectedShipmentIds.add(shipmentId);
+          await prefs.setStringList('rejectedShipmentIds', rejectedShipmentIds);
+        }
+
+        // remove pending and cancel timer
+        await _removePendingAutoReject(shipmentId);
+        _autoRejectTimers[shipmentId]?.cancel();
+        _autoRejectTimers.remove(shipmentId);
+
+        // remove from visible queues
+        if (mounted) {
+          setState(() {
+            _newShipmentsQueue
+                .removeWhere((s) => s["id"].toString() == shipmentId);
+            _activeShipments
+                .removeWhere((s) => s["id"].toString() == shipmentId);
+          });
+        }
+
+        if (!_streamController.isClosed) {
+          _streamController.add([..._newShipmentsQueue, ..._activeShipments]);
+        }
+      } else {
+        debugPrint("Failed to auto-reject shipment $shipmentId");
+      }
+    } catch (e) {
+      debugPrint("Error auto-rejecting shipment: $e");
+    }
+  }
+
+  /// --- Helpers to persist/restore pending auto-reject entries
+  Future<Map<String, int>> _getPendingAutoRejectMap() async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_PREF_PENDING_AUTO_REJECT) ?? [];
+    final map = <String, int>{};
+    for (var e in list) {
+      final parts = e.split('|');
+      if (parts.length != 2) continue;
+      final id = parts[0];
+      final millis = int.tryParse(parts[1]) ?? 0;
+      map[id] = millis;
+    }
+    return map;
+  }
+
+  Future<void> _persistPendingAutoReject(String id, int endMillis) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_PREF_PENDING_AUTO_REJECT) ?? [];
+    list.removeWhere((e) => e.startsWith('$id|'));
+    list.add('$id|$endMillis');
+    await prefs.setStringList(_PREF_PENDING_AUTO_REJECT, list);
+  }
+
+  Future<void> _removePendingAutoReject(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final list = prefs.getStringList(_PREF_PENDING_AUTO_REJECT) ?? [];
+    list.removeWhere((e) => e.startsWith('$id|'));
+    await prefs.setStringList(_PREF_PENDING_AUTO_REJECT, list);
+  }
+
+  /// Restores timers from persisted pending list. If an entry already expired,
+  /// it triggers immediate rejection.
+  Future<void> _restoreAutoRejectTimers() async {
+    final pending = await _getPendingAutoRejectMap();
+    final now = DateTime.now();
+    for (final entry in pending.entries.toList()) {
+      final id = entry.key;
+      final endMillis = entry.value;
+      final end = DateTime.fromMillisecondsSinceEpoch(endMillis);
+
+      if (now.isBefore(end)) {
+        // schedule the timer to fire at the persisted expiry
+        _autoRejectTimers[id]?.cancel();
+        final dur = end.difference(now);
+        _autoRejectTimers[id] = Timer(dur, () async {
+          _autoRejectTimers.remove(id);
+          await _removePendingAutoReject(id);
+          if (!mounted) return;
+          await _rejectShipmentFromTimer(id);
+        });
+      } else {
+        // expired while app was closed -> reject immediately
+        await _removePendingAutoReject(id);
+        if (!mounted) continue;
+        await _rejectShipmentFromTimer(id);
+      }
+    }
+  }
+
+  Future<void> changeOrderStatus(
+      String orderId, String newStatus, int userId, String msg) async {
+    if (!mounted) return;
+    setState(() => isLoading = true);
+
     try {
       final response = await http.post(
         Uri.parse('https://hrsps.com/login/api/change_order_status'),
         headers: <String, String>{'Content-Type': 'application/json'},
-        body:
-            jsonEncode(<String, String>{'order_id': orderId, 'status': status}),
+        body: jsonEncode(
+            <String, String>{'order_id': orderId, 'status': newStatus}),
       );
+
       if (response.statusCode == 200 || response.statusCode == 201) {
-        await fetchShipments(true);
+        // Refresh the shipments list
+        await fetchShipments(true, page: 1);
+
+        // Send notification to user
         await sendNotification(
           userIds: [userId],
           title: 'تحديث بخصوص حالة الطلب',
           body: msg,
         );
+
+        // If moving to in_delivery, start per-shipment delivery button timer
+        if (newStatus == "in_delivery") {
+          await startDeliveryButtonTimer(orderId);
+        }
+
+        // Optionally update local active shipments list
+        if (mounted) {
+          setState(() {
+            int index = _activeShipments
+                .indexWhere((s) => s["id"].toString() == orderId);
+            if (index != -1) {
+              _activeShipments[index]["status"] = newStatus;
+            }
+            if (newStatus == "delivered") {
+              _activeShipments
+                  .removeWhere((s) => s["id"].toString() == orderId);
+            }
+          });
+        }
       } else {
-        throw Exception('Failed to change order status');
+        throw Exception(
+            'Failed to change order status: ${response.statusCode}');
       }
     } catch (e) {
       Fluttertoast.showToast(msg: 'Error changing order status');
+      debugPrint('changeOrderStatus error: $e');
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) setState(() => isLoading = false);
     }
   }
 
@@ -512,35 +626,13 @@ class _ShipmentsState extends State<Shipments> {
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        print('Notification sent successfully');
+        debugPrint('Notification sent successfully');
       } else {
-        print('Failed to send notification: ${response.statusCode}');
-        print('Response body: ${response.body}');
+        debugPrint('Failed to send notification: ${response.statusCode}');
+        debugPrint('Response body: ${response.body}');
       }
     } catch (e) {
-      print('Error sending notification: $e');
-    }
-  }
-
-  void updateSalesmanStatus(bool status) async {
-    final response = await http.put(
-      Uri.parse('https://hrsps.com/login/api/drivers/$salesmanId'),
-      headers: <String, String>{
-        'Content-Type': 'application/json; charset=UTF-8',
-      },
-      body: jsonEncode(<String, dynamic>{
-        'active': status.toString(),
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      // Handle successful response
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      await prefs.setString('status', status.toString());
-      print('Status updated successfully');
-    } else {
-      // Handle error response
-      print('Failed to update status');
+      debugPrint('Error sending notification: $e');
     }
   }
 
@@ -559,598 +651,191 @@ class _ShipmentsState extends State<Shipments> {
             size: 35,
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.all(3.0),
-          child: Container(
-            width: 20,
-            height: 20,
-            decoration:
-                const BoxDecoration(shape: BoxShape.circle, color: Colors.red),
-            child: Center(
-              child: Text(
-                count.toString(),
-                style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
+        if (count > 0)
+          Padding(
+            padding: const EdgeInsets.all(3.0),
+            child: Container(
+              width: 20,
+              height: 20,
+              decoration: const BoxDecoration(
+                  shape: BoxShape.circle, color: Colors.red),
+              child: Center(
+                child: Text(
+                  count.toString(),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white),
+                ),
               ),
             ),
-          ),
-        )
+          )
       ],
     );
   }
 
-  Widget StatusCard({String name = "", int index = 0}) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 15),
-      child: InkWell(
-        onTap: () {
-          for (int i = 0; i < clicked.length; i++) {
-            clicked[i] = false;
-          }
-          clicked[index] = true;
-          fetchShipments(true);
-          setState(() {});
-        },
-        child: Container(
-          height: 40,
-          decoration: BoxDecoration(
-              border: Border.all(
-                  color: clicked[index] ? MAINCOLOR : const Color(0xffDDDDDD)),
-              borderRadius: BorderRadius.circular(10),
-              color: Colors.white),
-          child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Center(
-              child: Text(
-                name,
-                style: TextStyle(
-                    color:
-                        clicked[index] ? MAINCOLOR : const Color(0xffA1A1A1)),
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: MAINCOLOR,
+      child: SafeArea(
+        child: Scaffold(
+          drawer: _buildDrawer(),
+          appBar: AppBar(
+            centerTitle: true,
+            backgroundColor: MAINCOLOR,
+            iconTheme: const IconThemeData(color: Colors.white),
+            title: const Text(
+              "الطلبيات",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
             ),
+            actions: [
+              notificationCard(count: 0),
+            ],
           ),
-        ),
-      ),
-    );
-  }
+          body: StreamBuilder<List<dynamic>>(
+            stream: _streamController.stream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(
+                  child: SpinKitPulse(color: MAINCOLOR, size: 60),
+                );
+              }
 
-  Widget ShipmentCard({
-    String tracking_number = "",
-    String lattitude = "",
-    String longitude = "",
-    String business_name = "",
-    String business_phone = "",
-    String consignee_name = "",
-    String consignee_phone1 = "",
-    String consignee_phone2 = "",
-    String status = "",
-    String items_description = "",
-    double cod_amount = 0.0,
-    String type = "",
-    String from = "",
-    String to = "",
-    var productsArray,
-    int quantity = 0,
-    int id = 0,
-    int userId = 0,
-    String createdAt = "",
-    String updatedAt = "",
-    String resturantAdress = "",
-    String customerAdress = "",
-    String customerNear = "",
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 15, left: 15, top: 15),
-      child: InkWell(
-        onTap: () {
-          Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => ShipmentDetail(
-                        name: tracking_number,
-                        shipment_id: id.toString(),
-                        from: from,
-                        lattitude: lattitude,
-                        longitude: longitude,
-                        to: to,
-                        cod_amount: cod_amount,
-                        status: status,
-                        quantity: quantity,
-                        business_name: business_name,
-                        business_phone: business_phone,
-                        consignee_name: consignee_name,
-                        consignee_phone1: consignee_phone1,
-                        consignee_phone2: consignee_phone2,
-                        items_description: items_description,
-                        createdAt: createdAt,
-                        updatedAt: updatedAt,
-                        customerAdress: customerAdress,
-                        customerNear: customerNear,
-                        resturantAdress: resturantAdress,
-                      )));
-        },
-        child: Stack(
-          alignment: Alignment.centerLeft,
-          children: [
-            Container(
-              height: status == "delivered" ||
-                      status == "canceled" ||
-                      status == "returned" ||
-                      status == "in_progress" ||
-                      status == "pending"
-                  ? 180
-                  : 240,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      spreadRadius: 5,
-                      blurRadius: 7,
-                      offset: const Offset(0, 1),
-                    ),
-                  ],
-                  border: Border(
-                    bottom: BorderSide(
-                      color: MAINCOLOR,
-                      width: 3.0,
-                    ),
-                  ),
-                  color: Colors.white),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Padding(
-                    padding:
-                        const EdgeInsets.only(right: 15, left: 15, top: 15),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          tracking_number,
-                          style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                        Container(
-                          width: 120,
-                          height: 30,
-                          decoration: BoxDecoration(
-                              color: const Color.fromARGB(255, 241, 241, 241),
-                              border:
-                                  Border.all(color: const Color(0xffDDDDDD))),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              Image.asset(
-                                "assets/box.png",
-                                height: 15,
-                                fit: BoxFit.cover,
-                              ),
-                              Text(
-                                  "$quantity ${AppLocalizations.of(context)!.shipments_card}"),
-                            ],
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 15, left: 15, top: 5),
-                    child: Row(
-                      children: [
-                        Container(
-                          height: 12,
-                          width: 12,
-                          decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: MAINCOLOR, width: 2)),
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Text(
-                          AppLocalizations.of(context)!.from,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Text(
-                          from,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 15, left: 15, top: 5),
-                    child: Row(
-                      children: [
-                        Container(
-                          height: 12,
-                          width: 12,
-                          decoration: BoxDecoration(
-                            color: MAINCOLOR,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        Text(
-                          AppLocalizations.of(context)!.to,
-                          style: const TextStyle(fontSize: 16),
-                        ),
-                        const SizedBox(
-                          width: 10,
-                        ),
-                        SizedBox(
-                          height: 20,
-                          child: Text(
-                            to.length > 25 ? '${to.substring(0, 25)}...' : to,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding:
-                        const EdgeInsets.only(right: 15, left: 15, top: 15),
-                    child: Container(
-                      width: double.infinity,
-                      height: 1,
-                      color: const Color.fromARGB(255, 228, 227, 227),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 15, left: 15, top: 5),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Image.asset(
-                              "assets/money.png",
-                              fit: BoxFit.cover,
-                            ),
-                            const SizedBox(
-                              width: 10,
-                            ),
-                            Column(
-                              children: [
-                                Text(
-                                  status == "delivered"
-                                      ? "تم استلام المبلغ"
-                                      : status == "ready_for_delivery"
-                                          ? "ادفع للمطعم"
-                                          : status == "in_delivery"
-                                              ? "الزبون يجب ان يدفع"
-                                              : "",
-                                  style: const TextStyle(
-                                      color: Color(0xff3C3C3C), fontSize: 12),
-                                ),
-                                Text(
-                                    "${cod_amount.toString()} ${AppLocalizations.of(context)!.shekels}"),
-                              ],
-                            )
-                          ],
-                        ),
-                        InkWell(
-                          onTap: () {
-                            showModalBottomSheet(
-                              context: context,
-                              isScrollControlled: true,
-                              backgroundColor: Colors.white,
-                              builder: (context) {
-                                return FractionallySizedBox(
-                                  heightFactor: 0.85,
-                                  child: ProductDetailsBottomSheet(
-                                    total: cod_amount.toString(),
-                                    productsArray: productsArray,
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                          child: Container(
-                            decoration: BoxDecoration(
-                                color: Colors.transparent,
-                                border: Border.all(color: MAINCOLOR)),
-                            width: 150,
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Text(
-                                    AppLocalizations.of(context)!
-                                        .shipment_details,
-                                    style: TextStyle(color: MAINCOLOR),
-                                  ),
-                                  const SizedBox(
-                                    width: 10,
-                                  ),
-                                  Icon(
-                                    Icons.arrow_forward_ios,
-                                    size: 20,
-                                    color: MAINCOLOR,
-                                  )
-                                ],
-                              ),
-                            ),
-                          ),
-                        )
-                      ],
-                    ),
-                  ),
-                  Visibility(
-                    visible: status == "delivered" ||
-                            status == "canceled" ||
-                            status == "returned" ||
-                            status == "in_progress" ||
-                            status == "pending"
-                        ? false
-                        : true,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: 40,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: 1,
-                              child: InkWell(
-                                onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                        content: const Text(
-                                          "هل تريد بالتأكيد الغاء الطلب ؟ ",
-                                          style: TextStyle(
-                                              fontWeight: FontWeight.bold),
-                                        ),
-                                        actions: <Widget>[
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceAround,
-                                            children: [
-                                              InkWell(
-                                                onTap: () async {
-                                                  await changeOrderStatus(
-                                                      tracking_number,
-                                                      "canceled",
-                                                      userId,
-                                                      'تم الغاء طلبك');
-                                                  Fluttertoast.showToast(
-                                                    msg: 'لقد تم الغاء الطلب',
-                                                    backgroundColor:
-                                                        Colors.green,
-                                                    textColor: Colors.white,
-                                                  );
-                                                  Navigator.of(context).pop();
-                                                },
-                                                child: Container(
-                                                  height: 50,
-                                                  width: 100,
-                                                  decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              10),
-                                                      color: MAINCOLOR),
-                                                  child: const Center(
-                                                    child: Text(
-                                                      "نعم",
-                                                      style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize: 15,
-                                                          color: Colors.white),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              InkWell(
-                                                onTap: () {
-                                                  Navigator.pop(context);
-                                                },
-                                                child: Container(
-                                                  height: 50,
-                                                  width: 100,
-                                                  decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              10),
-                                                      color: MAINCOLOR),
-                                                  child: const Center(
-                                                    child: Text(
-                                                      "لا",
-                                                      style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize: 15,
-                                                          color: Colors.white),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                                child: Container(
-                                  height: 40,
-                                  decoration:
-                                      const BoxDecoration(color: Colors.red),
-                                  child: const Center(
-                                    child: Text(
-                                      "الغاء الطلب",
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 1,
-                              child: InkWell(
-                                onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    builder: (BuildContext context) {
-                                      return AlertDialog(
-                                        content: Text(
-                                          status == "ready_for_delivery"
-                                              ? "الرجاء التاكد من المكونات والمشروبات قبل استلام الطلب"
-                                              : "هل تريد تأكيد تسليم الطلب ؟ ",
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold),
-                                        ),
-                                        actions: <Widget>[
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceAround,
-                                            children: [
-                                              InkWell(
-                                                onTap: () async {
-                                                  // Change order status
-                                                  status == "ready_for_delivery"
-                                                      ? await changeOrderStatus(
-                                                          tracking_number,
-                                                          "in_delivery",
-                                                          userId,
-                                                          'طلبك الان اصبح قيد التوصيل')
-                                                      : await changeOrderStatus(
-                                                          tracking_number,
-                                                          "delivered",
-                                                          userId,
-                                                          'تم تسليم طلبك');
+              final shipments = snapshot.data ?? [];
 
-                                                  // Show toast message
-                                                  Fluttertoast.showToast(
-                                                    msg: status ==
-                                                            "ready_for_delivery"
-                                                        ? "لقد تم تأكيد استلام الطلب"
-                                                        : 'لقد تم اكتمال الطلب',
-                                                    backgroundColor:
-                                                        Colors.green,
-                                                    textColor: Colors.white,
-                                                  );
+              if (shipments.isEmpty) {
+                return const Center(
+                  child: Text(
+                    "لا يوجد شحنات حالية",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                );
+              }
 
-                                                  // Close the current screen
-                                                  Navigator.of(context).pop();
-                                                },
-                                                child: Container(
-                                                  height: 50,
-                                                  width: 100,
-                                                  decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              10),
-                                                      color: MAINCOLOR),
-                                                  child: const Center(
-                                                    child: Text(
-                                                      "نعم",
-                                                      style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize: 15,
-                                                          color: Colors.white),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              InkWell(
-                                                onTap: () {
-                                                  Navigator.pop(context);
-                                                },
-                                                child: Container(
-                                                  height: 50,
-                                                  width: 100,
-                                                  decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              10),
-                                                      color: MAINCOLOR),
-                                                  child: const Center(
-                                                    child: Text(
-                                                      "لا",
-                                                      style: TextStyle(
-                                                          fontWeight:
-                                                              FontWeight.bold,
-                                                          fontSize: 15,
-                                                          color: Colors.white),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        ],
-                                      );
-                                    },
-                                  );
-                                },
-                                child: Container(
-                                  height: 40,
-                                  decoration:
-                                      const BoxDecoration(color: Colors.green),
-                                  child: Center(
-                                    child: Text(
-                                      status == "ready_for_delivery"
-                                          ? "تم استلام الطلب"
-                                          : "تم توصيل الطلب",
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    type.toString() == "load" ? "تحميل" : "استلام",
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 13),
+              List<Widget> shipmentCards = [];
+
+              String buildItemsDescription(Map<String, dynamic> shipment) {
+                if (shipment["items"] != null && shipment["items"] is List) {
+                  return (shipment["items"] as List)
+                      .map((item) => item["product"]?["name"] ?? "")
+                      .join(", ");
+                }
+                return "";
+              }
+
+              for (var s in _newShipmentsQueue) {
+                final id = s["id"].toString();
+                shipmentCards.add(
+                  ShipmentCardWidget(
+                    key: ValueKey(id), // Unique key per shipment
+                    newOrder: true,
+                    trackingNumber: id,
+                    id: s["id"] ?? 0,
+                    from: s["restaurant"]?["name"] ?? "-",
+                    to: s["customer_name"] ?? "-",
+                    status: s["status"] ?? "-",
+                    userId: s["user_id"] ?? 1,
+                    shipment: s,
+                    newShipmentsQueue: _newShipmentsQueue,
+                    showDeliveryButtonForShipment:
+                        _showDeliveryButtonForShipment,
+                    remainingSecondsForShipment: _remainingSecondsForShipment,
+                    autoDismissTimers: _autoRejectTimers,
+                    activeShipments: _activeShipments,
+                    confirmShipment: confirmShipment,
+                    changeOrderStatus: changeOrderStatus,
+                    mainColor: MAINCOLOR,
+                    productsArray: s,
+                    lattitude: s["lattitude"]?.toString() ??
+                        s["restaurant"]?["lattitude"]?.toString() ??
+                        "",
+                    longitude: s["longitude"]?.toString() ??
+                        s["restaurant"]?["longitude"]?.toString() ??
+                        "",
+                    businessName: s["restaurant"]?["name"] ?? "-",
+                    businessPhone: s["restaurant"]?["phone_number"] ?? "-",
+                    consigneeName: s["customer_name"] ?? "-",
+                    consigneePhone1: s["mobile"] ?? "",
+                    consigneePhone2: s["mobile_2"] ?? "",
+                    itemsDescription: buildItemsDescription(s),
+                    codAmount: s["total"] != null
+                        ? double.tryParse(s["total"].toString()) ?? 0.0
+                        : 0.0,
+                    type: s["type"] ?? "",
+                    quantity: s["items_length"] ?? 0,
+                    createdAt: s["created_at"] ?? "",
+                    updatedAt: s["updated_at"] ?? "",
+                    resturantAdress: s["restaurant"]?["address"] ?? "",
+                    customerAdress: s["area"] ?? "",
+                    customerNear: s["address"] ?? "",
                   ),
-                  const SizedBox(
-                    width: 15,
+                );
+              }
+
+              for (var s in _activeShipments) {
+                final id = s["id"].toString();
+                shipmentCards.add(
+                  ShipmentCardWidget(
+                    key: ValueKey(id),
+                    newOrder: false,
+                    trackingNumber: id,
+                    id: s["id"] ?? 0,
+                    from: s["restaurant"]?["name"] ?? "-",
+                    to: s["customer_name"] ?? "-",
+                    status: s["status"] ?? "-",
+                    userId: s["user_id"] ?? 1,
+                    shipment: s,
+                    newShipmentsQueue: _newShipmentsQueue,
+                    showDeliveryButtonForShipment:
+                        _showDeliveryButtonForShipment,
+                    remainingSecondsForShipment: _remainingSecondsForShipment,
+                    autoDismissTimers: _autoRejectTimers,
+                    activeShipments: _activeShipments,
+                    confirmShipment: confirmShipment,
+                    changeOrderStatus: changeOrderStatus,
+                    mainColor: MAINCOLOR,
+                    productsArray: s,
+                    lattitude: s["lattitude"]?.toString() ??
+                        s["restaurant"]?["lattitude"]?.toString() ??
+                        "",
+                    longitude: s["longitude"]?.toString() ??
+                        s["restaurant"]?["longitude"]?.toString() ??
+                        "",
+                    businessName: s["restaurant"]?["name"] ?? "-",
+                    businessPhone: s["restaurant"]?["phone_number"] ?? "-",
+                    consigneeName: s["customer_name"] ?? "-",
+                    consigneePhone1: s["mobile"] ?? "",
+                    consigneePhone2: s["mobile_2"] ?? "",
+                    itemsDescription: buildItemsDescription(s),
+                    codAmount: s["total"] != null
+                        ? double.tryParse(s["total"].toString()) ?? 0.0
+                        : 0.0,
+                    type: s["type"] ?? "",
+                    quantity: s["items_length"] ?? 0,
+                    createdAt: s["created_at"] ?? "",
+                    updatedAt: s["updated_at"] ?? "",
+                    resturantAdress: s["restaurant"]?["address"] ?? "",
+                    customerAdress: s["area"] ?? "",
+                    customerNear: s["address"] ?? "",
                   ),
-                  Container(
-                    width: 60,
-                    height: 10,
-                    decoration: BoxDecoration(
-                        color: type.toString() == "receive"
-                            ? Colors.green
-                            : Colors.red,
-                        borderRadius: BorderRadius.circular(10)),
-                  )
-                ],
-              ),
-            ),
-          ],
+                );
+              }
+
+              // 🟨 Return scrollable list of cards
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: shipmentCards,
+                ),
+              );
+            },
+          ),
         ),
       ),
     );
@@ -1201,26 +886,26 @@ class _ShipmentsState extends State<Shipments> {
               ),
             ),
           ),
-          // Divider(
-          //   color: MAINCOLOR,
-          // ),
-          // ListTile(
-          //   title: Text(status ? "السائق متاح" : "السائق غير متاح",
-          //       style:
-          //           const TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
-          //   trailing: Switch(
-          //     activeColor: MAINCOLOR,
-          //     value: status,
-          //     onChanged: (val) {
-          //       setState(() {
-          //         status = val;
-          //       });
-          //       updateSalesmanStatus(val);
-          //     },
-          //   ),
-          // ),
           Divider(
             color: MAINCOLOR,
+          ),
+          ListTile(
+            leading: Icon(
+              Icons.list_sharp,
+              color: MAINCOLOR,
+            ),
+            title: const Text('طلبيات السائق',
+                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 16)),
+            onTap: () async {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => DriverOrders(
+                    userId: salesmanId,
+                    userName: driverName,
+                  ),
+                ),
+              );
+            },
           ),
           ListTile(
             leading: Icon(
@@ -1246,10 +931,14 @@ class _ShipmentsState extends State<Shipments> {
 }
 
 class ProductDetailsBottomSheet extends StatelessWidget {
-  var productsArray, total;
+  var productsArray, total, deliveryPrice, mealsPrice;
 
   ProductDetailsBottomSheet(
-      {super.key, required this.productsArray, required this.total});
+      {super.key,
+      required this.productsArray,
+      required this.total,
+      required this.deliveryPrice,
+      required this.mealsPrice});
 
   @override
   Widget build(BuildContext context) {
@@ -1279,6 +968,23 @@ class ProductDetailsBottomSheet extends StatelessWidget {
                   ),
                   Text(
                     "المجموع الكلي : $total",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Text(
+                    "التوصيل : ${deliveryPrice} ",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(
+                    width: 50,
+                  ),
+                  Text(
+                    "الطلبية : ${mealsPrice} ",
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.bold),
                   ),
@@ -1463,3 +1169,104 @@ class ProductDetailsBottomSheet extends StatelessWidget {
 //     );
 //   }
 // }
+
+
+// Expanded(
+//                               flex: 1,
+//                               child: InkWell(
+//                                 onTap: () {
+//                                   showDialog(
+//                                     context: context,
+//                                     builder: (BuildContext context) {
+//                                       return AlertDialog(
+//                                         content: const Text(
+//                                           "هل تريد بالتأكيد الغاء الطلب ؟ ",
+//                                           style: TextStyle(
+//                                               fontWeight: FontWeight.bold),
+//                                         ),
+//                                         actions: <Widget>[
+//                                           Row(
+//                                             mainAxisAlignment:
+//                                                 MainAxisAlignment.spaceAround,
+//                                             children: [
+//                                               InkWell(
+//                                                 onTap: () async {
+//                                                   Navigator.of(context).pop();
+//                                                   await changeOrderStatus(
+//                                                       tracking_number,
+//                                                       "canceled",
+//                                                       userId,
+//                                                       'تم الغاء طلبك');
+//                                                   Fluttertoast.showToast(
+//                                                     msg: 'لقد تم الغاء الطلب',
+//                                                     backgroundColor:
+//                                                         Colors.green,
+//                                                     textColor: Colors.white,
+//                                                   );
+//                                                 },
+//                                                 child: Container(
+//                                                   height: 50,
+//                                                   width: 100,
+//                                                   decoration: BoxDecoration(
+//                                                       borderRadius:
+//                                                           BorderRadius.circular(
+//                                                               10),
+//                                                       color: MAINCOLOR),
+//                                                   child: const Center(
+//                                                     child: Text(
+//                                                       "نعم",
+//                                                       style: TextStyle(
+//                                                           fontWeight:
+//                                                               FontWeight.bold,
+//                                                           fontSize: 15,
+//                                                           color: Colors.white),
+//                                                     ),
+//                                                   ),
+//                                                 ),
+//                                               ),
+//                                               InkWell(
+//                                                 onTap: () {
+//                                                   Navigator.pop(context);
+//                                                 },
+//                                                 child: Container(
+//                                                   height: 50,
+//                                                   width: 100,
+//                                                   decoration: BoxDecoration(
+//                                                       borderRadius:
+//                                                           BorderRadius.circular(
+//                                                               10),
+//                                                       color: MAINCOLOR),
+//                                                   child: const Center(
+//                                                     child: Text(
+//                                                       "لا",
+//                                                       style: TextStyle(
+//                                                           fontWeight:
+//                                                               FontWeight.bold,
+//                                                           fontSize: 15,
+//                                                           color: Colors.white),
+//                                                     ),
+//                                                   ),
+//                                                 ),
+//                                               ),
+//                                             ],
+//                                           )
+//                                         ],
+//                                       );
+//                                     },
+//                                   );
+//                                 },
+//                                 child: Container(
+//                                   height: 40,
+//                                   decoration:
+//                                       const BoxDecoration(color: Colors.red),
+//                                   child: const Center(
+//                                     child: Text(
+//                                       "الغاء الطلب",
+//                                       style: TextStyle(
+//                                           fontWeight: FontWeight.bold,
+//                                           color: Colors.white),
+//                                     ),
+//                                   ),
+//                                 ),
+//                               ),
+//                             ),

@@ -1,20 +1,14 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:location/location.dart';
 import 'package:flutter/material.dart';
-import 'package:optimus_opost/Components/button_widget/button_widget.dart';
 import 'package:optimus_opost/Pages/shipment_detail/add_note_diaog/add_note_dialog.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:optimus_opost/Pages/shipment_detail/detect_location/detect_location.dart';
-import 'package:optimus_opost/Server/functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../Constants/constants.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
-import 'package:intl/intl.dart';
 
 class ShipmentDetail extends StatefulWidget {
   final name,
@@ -29,6 +23,7 @@ class ShipmentDetail extends StatefulWidget {
       quantity,
       status,
       cod_amount,
+      total,
       lattitude,
       longitude,
       items_description,
@@ -43,6 +38,7 @@ class ShipmentDetail extends StatefulWidget {
       this.shipment_id,
       this.from,
       this.to,
+      this.total,
       this.business_name,
       this.business_phone,
       this.consignee_name,
@@ -328,6 +324,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                             consignee_phone2: widget.consignee_phone2,
                             items_description: widget.items_description,
                             cod_amount: widget.cod_amount,
+                            total: widget.total,
                             resturantAdress: widget.resturantAdress,
                             customerAdress: widget.customerAdress,
                             customerNear: widget.customerNear,
@@ -553,6 +550,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
     String status = "",
     String items_description = "",
     double cod_amount = 0.0,
+    double total = 0.0,
     String resturantAdress = "",
     String customerAdress = "",
     String customerNear = "",
@@ -959,7 +957,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                "$cod_amount ${AppLocalizations.of(context)!.shekels}",
+                                "$total ${AppLocalizations.of(context)!.shekels}",
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold, fontSize: 18),
                               ),
