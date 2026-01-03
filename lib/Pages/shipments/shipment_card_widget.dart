@@ -284,75 +284,79 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
 
   Widget _buildConfirmOrDetailsButton(BuildContext context) {
     return InkWell(
-      onTap: _isConfirmingNewOrder ? null : () async {
-        if (_isNewOrder) {
-          setState(() => _isConfirmingNewOrder = true);
-          try {
-            // Confirm new order flow
-            widget.autoDismissTimers[_shipmentIdStr]?.cancel();
-            await widget.confirmShipment(_shipmentIdStr);
+      onTap: _isConfirmingNewOrder
+          ? null
+          : () async {
+              if (_isNewOrder) {
+                setState(() => _isConfirmingNewOrder = true);
+                try {
+                  // Confirm new order flow
+                  widget.autoDismissTimers[_shipmentIdStr]?.cancel();
+                  await widget.confirmShipment(_shipmentIdStr);
 
-            // safety: after awaiting, widget might be gone
-            if (!mounted) return;
+                  // safety: after awaiting, widget might be gone
+                  if (!mounted) return;
 
-            SharedPreferences prefs = await SharedPreferences.getInstance();
-            await prefs.setString('activeShipmentId', _shipmentIdStr);
+                  SharedPreferences prefs =
+                      await SharedPreferences.getInstance();
+                  await prefs.setString('activeShipmentId', _shipmentIdStr);
 
-            if (widget.onConfirmCompleted != null) {
-              if (mounted) setState(() => _isConfirmingNewOrder = false);
-              widget.onConfirmCompleted!(
-                  _shipmentIdStr, Map<String, dynamic>.from(widget.shipment));
-              return;
-            }
+                  if (widget.onConfirmCompleted != null) {
+                    if (mounted) setState(() => _isConfirmingNewOrder = false);
+                    widget.onConfirmCompleted!(_shipmentIdStr,
+                        Map<String, dynamic>.from(widget.shipment));
+                    return;
+                  }
 
-            // If parent didn't provide a handler, update the lists that were passed in (best-effort)
-            if (!mounted) return;
-            setState(() {
-              if (widget.activeShipments is List) {
-                final existingIndex = (widget.activeShipments as List)
-                    .indexWhere((s) => s["id"].toString() == _shipmentIdStr);
-                if (existingIndex != -1) {
-                  (widget.activeShipments as List)[existingIndex] =
-                      Map<String, dynamic>.from(widget.shipment);
-                } else {
-                  (widget.activeShipments as List)
-                      .add(Map<String, dynamic>.from(widget.shipment));
+                  // If parent didn't provide a handler, update the lists that were passed in (best-effort)
+                  if (!mounted) return;
+                  setState(() {
+                    if (widget.activeShipments is List) {
+                      final existingIndex = (widget.activeShipments as List)
+                          .indexWhere(
+                              (s) => s["id"].toString() == _shipmentIdStr);
+                      if (existingIndex != -1) {
+                        (widget.activeShipments as List)[existingIndex] =
+                            Map<String, dynamic>.from(widget.shipment);
+                      } else {
+                        (widget.activeShipments as List)
+                            .add(Map<String, dynamic>.from(widget.shipment));
+                      }
+                    }
+                    widget.newShipmentsQueue.removeWhere(
+                        (s) => s["id"].toString() == _shipmentIdStr);
+                    widget.autoDismissTimers[_shipmentIdStr]?.cancel();
+                    widget.autoDismissTimers.remove(_shipmentIdStr);
+                  });
+                } catch (e) {
+                  Fluttertoast.showToast(
+                      msg: 'حدث خطأ، يرجى المحاولة مرة أخرى',
+                      backgroundColor: Colors.red,
+                      textColor: Colors.white);
+                } finally {
+                  if (mounted) setState(() => _isConfirmingNewOrder = false);
                 }
+              } else {
+                // open product details sheet
+                if (!mounted) return;
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.white,
+                  builder: (context) {
+                    return FractionallySizedBox(
+                      heightFactor: 0.85,
+                      child: ProductDetailsBottomSheet(
+                        total: _localCod.toString(),
+                        productsArray: widget.productsArray['items'] ?? [],
+                        deliveryPrice: _deliveryPrice,
+                        mealsPrice: _total,
+                      ),
+                    );
+                  },
+                );
               }
-              widget.newShipmentsQueue
-                  .removeWhere((s) => s["id"].toString() == _shipmentIdStr);
-              widget.autoDismissTimers[_shipmentIdStr]?.cancel();
-              widget.autoDismissTimers.remove(_shipmentIdStr);
-            });
-          } catch (e) {
-            Fluttertoast.showToast(
-                msg: 'حدث خطأ، يرجى المحاولة مرة أخرى',
-                backgroundColor: Colors.red,
-                textColor: Colors.white);
-          } finally {
-            if (mounted) setState(() => _isConfirmingNewOrder = false);
-          }
-        } else {
-          // open product details sheet
-          if (!mounted) return;
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.white,
-            builder: (context) {
-              return FractionallySizedBox(
-                heightFactor: 0.85,
-                child: ProductDetailsBottomSheet(
-                  total: _localCod.toString(),
-                  productsArray: widget.productsArray['items'] ?? [],
-                  deliveryPrice: _deliveryPrice,
-                  mealsPrice: _total,
-                ),
-              );
             },
-          );
-        }
-      },
       child: Container(
         decoration: BoxDecoration(
             color: Colors.transparent,
@@ -366,7 +370,8 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                     ? SizedBox(
                         height: 16,
                         width: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.black),
                       )
                     : const Text("تأكيد الطلب",
                         style: TextStyle(
@@ -426,13 +431,15 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                       InkWell(
                                         onTap: () async {
                                           if (isConfirmLoading) return;
-                                          setDialogState(() => isConfirmLoading = true);
+                                          setDialogState(
+                                              () => isConfirmLoading = true);
 
                                           // show a blocking loading dialog on top
                                           showDialog(
                                             context: context,
                                             barrierDismissible: false,
-                                            builder: (BuildContext loadingDialogContext) {
+                                            builder: (BuildContext
+                                                loadingDialogContext) {
                                               return WillPopScope(
                                                 onWillPop: () async => false,
                                                 child: AlertDialog(
@@ -441,10 +448,12 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                                       SizedBox(
                                                           height: 24,
                                                           width: 24,
-                                                          child: CircularProgressIndicator()),
+                                                          child:
+                                                              CircularProgressIndicator()),
                                                       SizedBox(width: 16),
                                                       Expanded(
-                                                          child: Text('جاري المعالجة...'))
+                                                          child: Text(
+                                                              'جاري المعالجة...'))
                                                     ],
                                                   ),
                                                 ),
@@ -461,12 +470,15 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                                   'طلبك الان اصبح قيد التوصيل');
 
                                               // close loading dialog first, then the confirmation
-                                              Navigator.of(dialogContext).pop(); // pops loading dialog
-                                              Navigator.of(dialogContext).pop(); // pops confirmation
+                                              Navigator.of(dialogContext)
+                                                  .pop(); // pops loading dialog
+                                              Navigator.of(dialogContext)
+                                                  .pop(); // pops confirmation
 
                                               if (!mounted) return;
                                               Fluttertoast.showToast(
-                                                  msg: "لقد تم تأكيد استلام الطلب من المطعم",
+                                                  msg:
+                                                      "لقد تم تأكيد استلام الطلب من المطعم",
                                                   backgroundColor: Colors.green,
                                                   textColor: Colors.white);
                                             } else {
@@ -476,8 +488,10 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                                   widget.userId,
                                                   'تم تسليم طلبك');
 
-                                              Navigator.of(dialogContext).pop(); // pops loading dialog
-                                              Navigator.of(dialogContext).pop(); // pops confirmation
+                                              Navigator.of(dialogContext)
+                                                  .pop(); // pops loading dialog
+                                              Navigator.of(dialogContext)
+                                                  .pop(); // pops confirmation
 
                                               if (!mounted) return;
                                               Fluttertoast.showToast(
@@ -492,11 +506,13 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                             } catch (_) {}
 
                                             Fluttertoast.showToast(
-                                                msg: 'حدث خطأ، يرجى المحاولة مرة أخرى',
+                                                msg:
+                                                    'حدث خطأ، يرجى المحاولة مرة أخرى',
                                                 backgroundColor: Colors.red,
                                                 textColor: Colors.white);
 
-                                            setDialogState(() => isConfirmLoading = false);
+                                            setDialogState(
+                                                () => isConfirmLoading = false);
                                           }
                                         },
                                         child: Container(
@@ -511,20 +527,25 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                                   ? const SizedBox(
                                                       height: 20,
                                                       width: 20,
-                                                      child: CircularProgressIndicator(
-                                                          color: Colors.white,
-                                                          strokeWidth: 2),
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                              color:
+                                                                  Colors.white,
+                                                              strokeWidth: 2),
                                                     )
                                                   : const Text("نعم",
                                                       style: TextStyle(
-                                                          fontWeight: FontWeight.bold,
+                                                          fontWeight:
+                                                              FontWeight.bold,
                                                           fontSize: 15,
-                                                          color: Colors.white))),
+                                                          color:
+                                                              Colors.white))),
                                         ),
                                       ),
                                       InkWell(
                                         onTap: () {
-                                          if (!isConfirmLoading) Navigator.pop(dialogContext);
+                                          if (!isConfirmLoading)
+                                            Navigator.pop(dialogContext);
                                         },
                                         child: Container(
                                           height: 50,
@@ -536,7 +557,8 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                                           child: const Center(
                                               child: Text("لا",
                                                   style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
+                                                      fontWeight:
+                                                          FontWeight.bold,
                                                       fontSize: 15,
                                                       color: Colors.white))),
                                         ),
