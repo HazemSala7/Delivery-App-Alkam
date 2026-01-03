@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:optimus_opost/Constants/constants.dart';
 import 'package:optimus_opost/Pages/shipments_from_to/shipments_from_to.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:optimus_opost/l10n/app_localizations.dart';
 import '../../Components/text_field_widget/text_field_widget.dart';
 
 class SearchScreen extends StatefulWidget {

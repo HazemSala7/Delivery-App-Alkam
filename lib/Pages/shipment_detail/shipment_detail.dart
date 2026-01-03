@@ -8,7 +8,7 @@ import 'package:flutter/gestures.dart';
 import 'package:optimus_opost/Pages/shipment_detail/detect_location/detect_location.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../Constants/constants.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:optimus_opost/l10n/app_localizations.dart';
 
 class ShipmentDetail extends StatefulWidget {
   final name,

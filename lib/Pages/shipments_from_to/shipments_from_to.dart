@@ -4,7 +4,7 @@ import 'package:optimus_opost/Constants/constants.dart';
 import 'package:optimus_opost/Pages/notifications/notifications.dart';
 import 'package:optimus_opost/Pages/shipment_detail/shipment_detail.dart';
 import 'package:optimus_opost/main.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:optimus_opost/l10n/app_localizations.dart';
 import '../../Server/functions.dart';
 import '../search_dialog/search_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
