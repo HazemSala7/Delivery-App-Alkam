@@ -32,7 +32,10 @@ var headers = {
 };
 
 getRequest(API_URL) async {
-  var response = await http.get(Uri.parse(API_URL), headers: headers);
+  // Hard timeout so a stalled network can't pile up polling requests.
+  var response = await http
+      .get(Uri.parse(API_URL), headers: headers)
+      .timeout(const Duration(seconds: 8));
   var res = jsonDecode(response.body);
   return res;
 }
