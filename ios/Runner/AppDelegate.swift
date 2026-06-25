@@ -15,8 +15,10 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // DISABLED: Everything to test bare Flutter
-    // GeneratedPluginRegistrant.register(with: self)
+    // Register Flutter plugins. firebase/google_maps are removed from the
+    // Podfile, so this only registers the safe plugins (shared_preferences,
+    // path_provider, url_launcher, audioplayers, local_notifications, etc.).
+    GeneratedPluginRegistrant.register(with: self)
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

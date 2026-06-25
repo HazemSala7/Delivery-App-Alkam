@@ -529,18 +529,19 @@ class _LoginScreenState extends State<LoginScreen> {
         final user = data["user"] ?? {};
         final active = (user['active'] ?? '').toString();
         print("📊 [LOGIN] Active status: $active");
-        // The orders API keys orders by the driver's salesman/serial number
-        // (e.g. "8608"), NOT the users-table primary key. Pick the right
-        // field with safe fallbacks.
+        // The orders (order.salesman_id) AND the prepaid balance are both keyed
+        // by the users-table primary key (e.g. "8608" is actually User.id).
+        // So always use the user id — using serial_number breaks balance/orders
+        // for drivers whose serial differs from their id.
         final String salesmanIdValue = [
-          user['salesman_id'],
-          user['serial_number'],
-          user['serial'],
-          user['driver_id'],
           user['id'],
+          user['salesman_id'],
         ]
             .firstWhere(
-              (v) => v != null && v.toString().trim().isNotEmpty,
+              (v) =>
+                  v != null &&
+                  v.toString().trim().isNotEmpty &&
+                  v.toString().trim().toLowerCase() != 'null',
               orElse: () => '',
             )
             .toString();
