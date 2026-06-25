@@ -6,6 +6,7 @@ import 'package:optimus_opost/Pages/shipment_detail/add_note_diaog/add_note_dial
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/gestures.dart';
 import 'package:optimus_opost/Pages/shipment_detail/detect_location/detect_location.dart';
+import 'package:optimus_opost/Pages/delivery_route/delivery_route_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../Constants/constants.dart';
 import 'package:optimus_opost/l10n/app_localizations.dart';
@@ -26,6 +27,8 @@ class ShipmentDetail extends StatefulWidget {
       total,
       lattitude,
       longitude,
+      restaurant_lat,
+      restaurant_lng,
       items_description,
       createdAt,
       updatedAt,
@@ -45,6 +48,8 @@ class ShipmentDetail extends StatefulWidget {
       this.consignee_phone1,
       this.lattitude,
       this.longitude,
+      this.restaurant_lat,
+      this.restaurant_lng,
       this.status,
       this.cod_amount,
       this.quantity,
@@ -70,6 +75,13 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
 
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
+  }
+
+  double? _toDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is double) return v;
+    if (v is int) return v.toDouble();
+    return double.tryParse(v.toString());
   }
 
   void showContactOptions(BuildContext context, String phone) async {
@@ -254,7 +266,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                                             height: 45,
                                             child: Center(
                                               child: Text(
-                                                "موقع العميل",
+                                                "الطريق",
                                                 style: TextStyle(
                                                     color: con
                                                         ? MAINCOLOR
@@ -334,36 +346,27 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                                 width: double.infinity,
                                 height:
                                     MediaQuery.of(context).size.height - 170,
-                                child: GoogleMap(
-                                  onMapCreated: _onMapCreated,
-                                  initialCameraPosition: CameraPosition(
-                                    target: LatLng(
-                                        double.parse(
-                                            widget.lattitude.toString()),
-                                        double.parse(
-                                            widget.longitude.toString())),
-                                    zoom: 11.0,
-                                  ),
-                                  markers: {
-                                    Marker(
-                                      markerId: const MarkerId("marker1"),
-                                      position: LatLng(
-                                          double.parse(
-                                              widget.lattitude.toString()),
-                                          double.parse(
-                                              widget.longitude.toString())),
-                                      draggable: true,
-                                      onDragEnd: (value) {
-                                        // value is the new position
-                                      },
-                                      icon: BitmapDescriptor.defaultMarker,
-                                    ),
-                                    const Marker(
-                                      markerId: MarkerId("marker2"),
-                                      position: LatLng(37.415768808487435,
-                                          -122.08440050482749),
-                                    ),
-                                  },
+                                child: DeliveryRouteView(
+                                  orderNumber:
+                                      widget.shipment_id?.toString() ?? "",
+                                  restaurantName:
+                                      widget.business_name?.toString() ?? "",
+                                  restaurantPhone:
+                                      widget.business_phone?.toString() ?? "",
+                                  restaurantAddress:
+                                      widget.resturantAdress?.toString() ?? "",
+                                  restaurantLat: _toDouble(widget.restaurant_lat),
+                                  restaurantLng: _toDouble(widget.restaurant_lng),
+                                  customerName:
+                                      widget.consignee_name?.toString() ?? "",
+                                  customerPhone:
+                                      widget.consignee_phone1?.toString() ?? "",
+                                  customerAddress: [
+                                    widget.customerAdress?.toString() ?? "",
+                                    widget.customerNear?.toString() ?? "",
+                                  ].where((e) => e.trim().isNotEmpty).join(" - "),
+                                  customerLat: _toDouble(widget.lattitude),
+                                  customerLng: _toDouble(widget.longitude),
                                 ),
                               )
                             : ListView.builder(

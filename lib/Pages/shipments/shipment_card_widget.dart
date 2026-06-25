@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:optimus_opost/Pages/shipment_detail/shipment_detail.dart';
+import 'package:optimus_opost/Pages/delivery_route/delivery_route_view.dart';
 import 'package:optimus_opost/Pages/shipments/preparation_time/preparation_time.dart';
 import 'package:optimus_opost/Pages/shipments/shipments.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -537,8 +538,64 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
               ]),
             ),
             const SizedBox(width: 8),
+            if (!_isNewOrder) ...[
+              _buildRouteButton(context),
+              const SizedBox(width: 8),
+            ],
             _buildConfirmOrDetailsButton(context),
           ]),
+    );
+  }
+
+  Widget _buildRouteButton(BuildContext context) {
+    return InkWell(
+      onTap: () => _openRouteScreen(context),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        height: 40,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: widget.mainColor,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.map_rounded, size: 18, color: Colors.white),
+            SizedBox(width: 6),
+            Text("الطريق",
+                style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openRouteScreen(BuildContext context) {
+    double? parse(dynamic v) => double.tryParse(v?.toString() ?? "");
+    final restaurant = widget.shipment["restaurant"];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DeliveryRouteScreen(
+          orderNumber: widget.trackingNumber,
+          restaurantName: widget.businessName,
+          restaurantPhone: widget.businessPhone,
+          restaurantAddress: widget.resturantAdress,
+          restaurantLat: parse(restaurant?["lattitude"]),
+          restaurantLng: parse(restaurant?["longitude"]),
+          customerName: widget.consigneeName,
+          customerPhone: widget.consigneePhone1,
+          customerAddress: [widget.customerAdress, widget.customerNear]
+              .where((e) => e.trim().isNotEmpty)
+              .join(" - "),
+          customerLat: parse(widget.lattitude),
+          customerLng: parse(widget.longitude),
+        ),
+      ),
     );
   }
 
@@ -981,6 +1038,16 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                     from: widget.from,
                     lattitude: double.tryParse(widget.lattitude) ?? 0.0,
                     longitude: double.tryParse(widget.longitude) ?? 0.0,
+                    restaurant_lat: double.tryParse(
+                            widget.shipment["restaurant"]?["lattitude"]
+                                    ?.toString() ??
+                                "") ??
+                        0.0,
+                    restaurant_lng: double.tryParse(
+                            widget.shipment["restaurant"]?["longitude"]
+                                    ?.toString() ??
+                                "") ??
+                        0.0,
                     to: widget.to,
                     cod_amount: widget.codAmount,
                     total: _localCod,

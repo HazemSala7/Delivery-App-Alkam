@@ -6,6 +6,7 @@ import 'package:optimus_opost/Constants/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../../Server/server.dart';
+import '../../Server/driver_topic.dart';
 import '../shipments/shipments.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -492,17 +493,18 @@ class _LoginScreenState extends State<LoginScreen> {
       if (role_id == "3") {
         final user = data["user"] ?? {};
         final active = (user['active'] ?? '').toString();
-        // The orders API keys orders by the driver's salesman/serial number
-        // (e.g. "8608"), NOT the users-table primary key. Pick the right
-        // field with safe fallbacks.
+        // The orders (order.salesman_id) AND the prepaid balance are both keyed
+        // by the users-table primary key (e.g. "8608" is actually User.id).
+        // So always use the user id — using serial_number breaks balance/orders
+        // for drivers whose serial differs from their id.
         final String salesmanIdValue = [
-          user['salesman_id'],
-          user['serial_number'],
-          user['serial'],
-          user['driver_id'],
           user['id'],
+          user['salesman_id'],
         ].firstWhere(
-          (v) => v != null && v.toString().trim().isNotEmpty,
+          (v) =>
+              v != null &&
+              v.toString().trim().isNotEmpty &&
+              v.toString().trim().toLowerCase() != 'null',
           orElse: () => '',
         ).toString();
         await prefs.setString('phone', mobileController.text);
@@ -517,6 +519,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
         await sendTokenToServer(
             myToken, (data["access_token"] ?? '').toString());
+
+        // Subscribe this device to the driver's personal topic so targeted
+        // order pushes reach ALL devices logged in with this account.
+        await DriverTopic.subscribe(salesmanIdValue);
 
         Fluttertoast.showToast(msg: 'تم تسجيل الدخول بنجاح');
 

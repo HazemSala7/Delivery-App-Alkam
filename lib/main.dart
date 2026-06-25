@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:optimus_opost/Server/order_refresh_bus.dart';
+import 'package:optimus_opost/Server/driver_topic.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_analytics/observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -32,7 +35,57 @@ void main() async {
 }
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("Background message received: ${message.notification!.title}");
+  print("Background message received: ${message.notification?.title}");
+}
+
+/// Local notifications plugin + high-importance channel so order pushes show
+/// as a heads-up notification even while the app is in the FOREGROUND on
+/// Android (Android does not auto-display FCM messages while the app is open).
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+const AndroidNotificationChannel highImportanceChannel =
+    AndroidNotificationChannel(
+  'high_importance_channel',
+  'إشعارات الطلبات',
+  description: 'إشعارات طلبات التوصيل الجديدة',
+  importance: Importance.max,
+);
+
+Future<void> _initLocalNotifications() async {
+  const AndroidInitializationSettings androidInit =
+      AndroidInitializationSettings('@mipmap/launcher_icon');
+  const DarwinInitializationSettings iosInit = DarwinInitializationSettings();
+  const InitializationSettings initSettings =
+      InitializationSettings(android: androidInit, iOS: iosInit);
+  await flutterLocalNotificationsPlugin.initialize(initSettings);
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(highImportanceChannel);
+}
+
+void _showLocalNotification(RemoteMessage message) {
+  final notification = message.notification;
+  final title =
+      notification?.title ?? message.data['title'] ?? 'طلب جديد للتوصيل';
+  final body = notification?.body ?? message.data['body'] ?? '';
+  flutterLocalNotificationsPlugin.show(
+    DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    title,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        highImportanceChannel.id,
+        highImportanceChannel.name,
+        channelDescription: highImportanceChannel.description,
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: '@mipmap/launcher_icon',
+      ),
+      iOS: const DarwinNotificationDetails(),
+    ),
+  );
 }
 
 class Optimus extends StatefulWidget {
@@ -58,6 +111,7 @@ class _OptimusState extends State<Optimus> {
     analytics = FirebaseAnalytics.instance;
     observer = FirebaseAnalyticsObserver(analytics: analytics);
     loadData();
+    _initLocalNotifications();
     requestFirebasePermissions();
     setupFirebaseMessaging();
     getToken();
@@ -95,19 +149,33 @@ class _OptimusState extends State<Optimus> {
       sound: true,
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('User granted permission');
-      FirebaseMessaging.instance.subscribeToTopic('Jfood');
-    } else if (settings.authorizationStatus ==
-        AuthorizationStatus.provisional) {
-      print('User granted provisional permission');
-    } else {
-      print('User declined or has not accepted permission');
-    }
+    print('Notification authorization: ${settings.authorizationStatus}');
+
+    // Always subscribe so topic pushes arrive regardless of the iOS-style
+    // authorization status. The subscription itself does NOT need permission —
+    // permission only controls whether the OS DISPLAYS the notification.
+    await messaging.subscribeToTopic('Jfood');
+
+    // Subscribe to the driver's personal topic (if already logged in) so
+    // targeted pushes reach this device too — across all of the user's devices.
+    await DriverTopic.subscribeForCurrentUser();
+
+    // Make heads-up notifications appear while the app is in the foreground
+    // (iOS handles this here; Android uses the high-importance channel).
+    await messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
   void setupFirebaseMessaging() {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      // Refresh the shipments list immediately — don't wait for the next poll.
+      OrderRefreshBus.ping();
+      // Show a real heads-up notification (Android won't do this on its own
+      // while the app is open).
+      _showLocalNotification(message);
       if (message.notification != null) {
         print("Message received: ${message.notification!.title}");
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -116,10 +184,11 @@ class _OptimusState extends State<Optimus> {
             body: message.notification!.body ?? '',
           );
         });
-      } 
+      }
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      OrderRefreshBus.ping();
       print("Message opened app: ${message.notification?.title}");
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showFancyOrderAlert(

@@ -31,10 +31,19 @@ var headers = {
   "Accept": "application/json"
 };
 
+// A single shared client so repeated polls reuse the same keep-alive
+// connection (skips the TCP + TLS handshake every 8s). On high-latency 3G
+// this is a big speed-up for fetching shipments.
+final http.Client _sharedClient = http.Client();
+
 getRequest(API_URL) async {
   // Hard timeout so a stalled network can't pile up polling requests.
-  var response = await http
-      .get(Uri.parse(API_URL), headers: headers)
+  var response = await _sharedClient
+      .get(Uri.parse(API_URL), headers: {
+        ...headers,
+        // Ask the server to gzip the JSON; dart:io decompresses automatically.
+        'Accept-Encoding': 'gzip',
+      })
       .timeout(const Duration(seconds: 8));
   var res = jsonDecode(response.body);
   return res;

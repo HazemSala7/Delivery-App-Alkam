@@ -8,12 +8,16 @@
     "test": "test"
   },
   "scripts": {
+    "start": "node server.js",
+    "send-test": "node send_test.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "firebase-admin": "^12.3.1"
   }
 }
