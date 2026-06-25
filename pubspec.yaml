@@ -28,9 +28,9 @@ dependencies:
   http: ^1.2.0
   flutter_local_notifications: ^17.2.4
 
-  # DISABLED FOR DEBUGGING - Firebase causes iOS crash
-  # firebase_core: ^3.15.1
-  # firebase_messaging: ^15.2.9
+  # Re-enabled for push notifications (defensively initialized in main.dart).
+  firebase_core: ^3.15.1
+  firebase_messaging: ^15.2.9
   # firebase_storage: ^12.4.9
   # firebase_analytics: ^11.5.2
   # cloud_firestore: ^5.6.11

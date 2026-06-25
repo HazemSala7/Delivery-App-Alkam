@@ -1,12 +1,12 @@
 import 'dart:convert';
-// DISABLED: Firebase - plugin disabled
-// import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:optimus_opost/Constants/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../../Server/server.dart';
+import '../../Server/driver_topic.dart';
 import '../shipments/shipments.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -28,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     loadData();
-    // getToken(); // Disabled - Firebase not initialized
+    getToken();
   }
 
   Future<void> loadData() async {
@@ -451,15 +451,14 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // DISABLED: Firebase - plugin disabled
-  // Future<void> getToken() async {
-  //   try {
-  //     myToken = (await FirebaseMessaging.instance.getToken()) ?? "";
-  //     print("FCM Token: $myToken");
-  //   } catch (e) {
-  //     print("Error getting token: $e");
-  //   }
-  // }
+  Future<void> getToken() async {
+    try {
+      myToken = (await FirebaseMessaging.instance.getToken()) ?? "";
+      print("FCM Token: $myToken");
+    } catch (e) {
+      print("Error getting token: $e");
+    }
+  }
 
   Future<void> sendTokenToServer(String token, String barrierToken) async {
     String apiUrl = URL_UPDATE_TOKEN;
@@ -571,6 +570,12 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (e) {
           print("⚠️ [LOGIN] Could not send token to server: $e");
         }
+
+        // Subscribe this device to the driver's personal topic so targeted
+        // order pushes reach all devices logged in with this account.
+        try {
+          await DriverTopic.subscribe(salesmanIdValue);
+        } catch (_) {}
 
         try {
           Fluttertoast.showToast(msg: 'تم تسجيل الدخول بنجاح');

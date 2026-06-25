@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
-// DISABLED: Firebase imports causing crash
-// import 'package:firebase_core/firebase_core.dart';
-// import 'package:firebase_messaging/firebase_messaging.dart';
-// import 'package:firebase_analytics/firebase_analytics.dart';
-// import 'package:firebase_analytics/observer.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:optimus_opost/Server/order_refresh_bus.dart';
+import 'package:optimus_opost/Server/driver_topic.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:optimus_opost/Pages/shipments/shipments.dart';
 import 'package:optimus_opost/l10n/app_localizations.dart';
@@ -15,11 +15,77 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dart:async';
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // No-op: a notification-payload message is displayed by the OS automatically.
+}
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+    FlutterLocalNotificationsPlugin();
+
+const AndroidNotificationChannel highImportanceChannel =
+    AndroidNotificationChannel(
+  'high_importance_channel',
+  'إشعارات الطلبات',
+  description: 'إشعارات طلبات التوصيل الجديدة',
+  importance: Importance.max,
+);
+
+Future<void> _initLocalNotifications() async {
+  try {
+    const AndroidInitializationSettings androidInit =
+        AndroidInitializationSettings('@mipmap/launcher_icon');
+    const DarwinInitializationSettings iosInit = DarwinInitializationSettings();
+    const InitializationSettings initSettings =
+        InitializationSettings(android: androidInit, iOS: iosInit);
+    await flutterLocalNotificationsPlugin.initialize(initSettings);
+    await flutterLocalNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(highImportanceChannel);
+  } catch (_) {}
+}
+
+void _showLocalNotification(RemoteMessage message) {
+  try {
+    final notification = message.notification;
+    final title =
+        notification?.title ?? message.data['title'] ?? 'طلب جديد للتوصيل';
+    final body = notification?.body ?? message.data['body'] ?? '';
+    flutterLocalNotificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          highImportanceChannel.id,
+          highImportanceChannel.name,
+          channelDescription: highImportanceChannel.description,
+          importance: Importance.max,
+          priority: Priority.high,
+          icon: '@mipmap/launcher_icon',
+        ),
+        iOS: const DarwinNotificationDetails(),
+      ),
+    );
+  } catch (_) {}
+}
+
 void main() async {
   // Also suppress unhandled async errors from platform channels
   runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+
+      // Defensive Firebase init — never let it crash the app.
+      try {
+        await Firebase.initializeApp();
+        FirebaseMessaging.onBackgroundMessage(
+            _firebaseMessagingBackgroundHandler);
+        await _initLocalNotifications();
+      } catch (e) {
+        print("Firebase init skipped: $e");
+      }
 
       // Suppress platform channel errors from appearing in console
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -81,7 +147,9 @@ class _OptimusState extends State<Optimus> {
     super.initState();
     try {
       loadData();
-      // DISABLED: All Firebase methods - plugins disabled
+      requestFirebasePermissions();
+      setupFirebaseMessaging();
+      getToken();
     } catch (e) {
       print("Error in initState: $e");
     }
@@ -113,58 +181,65 @@ class _OptimusState extends State<Optimus> {
   }
 
   getToken() async {
-    // DISABLED: Firebase - plugin disabled
-    // String? mytoken = await FirebaseMessaging.instance.getToken();
-    // print(mytoken);
+    try {
+      final mytoken = await FirebaseMessaging.instance.getToken();
+      print("FCM token: $mytoken");
+    } catch (e) {
+      print("getToken skipped: $e");
+    }
   }
 
   Future<void> requestFirebasePermissions() async {
-    // DISABLED: Firebase - plugin disabled
-    // FirebaseMessaging messaging = FirebaseMessaging.instance;
-    // NotificationSettings settings = await messaging.requestPermission(
-    //   alert: true,
-    //   announcement: false,
-    //   badge: true,
-    //   carPlay: false,
-    //   criticalAlert: false,
-    //   provisional: false,
-    //   sound: true,
-    // );
+    try {
+      FirebaseMessaging messaging = FirebaseMessaging.instance;
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      print('Notification authorization: ${settings.authorizationStatus}');
 
-    // if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-    //   print('User granted permission');
-    //   FirebaseMessaging.instance.subscribeToTopic('Jfood');
-    // } else if (settings.authorizationStatus ==
-    //     AuthorizationStatus.provisional) {
-    //   print('User granted provisional permission');
-    // } else {
-    //   print('User declined or has not accepted permission');
-    // }
+      // Always subscribe so topic pushes arrive regardless of authorization
+      // status (subscription itself doesn't need permission).
+      await messaging.subscribeToTopic('Jfood');
+      await DriverTopic.subscribeForCurrentUser();
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+    } catch (e) {
+      print("requestFirebasePermissions skipped: $e");
+    }
   }
 
   void setupFirebaseMessaging() {
-    // DISABLED: Firebase - plugin disabled
-    // FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-    //   if (message.notification != null) {
-    //     print("Message received: ${message.notification!.title}");
-    //     WidgetsBinding.instance.addPostFrameCallback((_) {
-    //       _showFancyOrderAlert(
-    //         title: message.notification!.title ?? 'طلب جديد للتوصيل',
-    //         body: message.notification!.body ?? '',
-    //       );
-    //     });
-    //   }
-    // });
+    try {
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        OrderRefreshBus.ping();
+        _showLocalNotification(message);
+        if (message.notification != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showFancyOrderAlert(
+              title: message.notification!.title ?? 'طلب جديد للتوصيل',
+              body: message.notification!.body ?? '',
+            );
+          });
+        }
+      });
 
-    // FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-    //   print("Message opened app: ${message.notification?.title}");
-    //   WidgetsBinding.instance.addPostFrameCallback((_) {
-    //     _showFancyOrderAlert(
-    //       title: message.notification?.title ?? 'طلب جديد للتوصيل',
-    //       body: message.notification?.body ?? '',
-    //     );
-    //   });
-    // });
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        OrderRefreshBus.ping();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _showFancyOrderAlert(
+            title: message.notification?.title ?? 'طلب جديد للتوصيل',
+            body: message.notification?.body ?? '',
+          );
+        });
+      });
+    } catch (e) {
+      print("setupFirebaseMessaging skipped: $e");
+    }
   }
 
   /// Beautiful in-app alert for incoming push notifications.

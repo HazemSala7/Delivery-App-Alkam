@@ -1,8 +1,9 @@
-// NOTE: Firebase messaging is disabled in this build (see the commented-out
-// firebase_* deps in pubspec.yaml) to keep the iOS build working. This is a
-// no-op stub that preserves the original API so call sites keep compiling.
-// Re-enable firebase_messaging and restore the real implementation (see git
-// history of commit a852849 "fix some issues") when bringing Firebase back.
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Per-driver FCM topic so a targeted order push reaches *every* device the
+/// driver is logged in on, and survives FCM token rotation. The backend sends
+/// the targeted notification to `driver_<salesmanId>` (= the users-table id).
 class DriverTopic {
   DriverTopic._();
 
@@ -10,14 +11,24 @@ class DriverTopic {
   static String topicFor(String salesmanId) => 'driver_$salesmanId';
 
   static Future<void> subscribe(String salesmanId) async {
-    // no-op: Firebase messaging disabled
+    final id = salesmanId.trim();
+    if (id.isEmpty) return;
+    try {
+      await FirebaseMessaging.instance.subscribeToTopic(topicFor(id));
+    } catch (_) {}
   }
 
   static Future<void> subscribeForCurrentUser() async {
-    // no-op: Firebase messaging disabled
+    final prefs = await SharedPreferences.getInstance();
+    await subscribe(prefs.getString('salesmanId') ?? '');
   }
 
   static Future<void> unsubscribeForCurrentUser() async {
-    // no-op: Firebase messaging disabled
+    final prefs = await SharedPreferences.getInstance();
+    final id = (prefs.getString('salesmanId') ?? '').trim();
+    if (id.isEmpty) return;
+    try {
+      await FirebaseMessaging.instance.unsubscribeFromTopic(topicFor(id));
+    } catch (_) {}
   }
 }
