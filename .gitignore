@@ -3,6 +3,9 @@
 *.log
 *.pyc
 *.swp
+
+# Firebase Admin SDK service account key (SECRET — never commit)
+*firebase-adminsdk*.json
 .DS_Store
 .atom/
 .build/

@@ -13,6 +13,8 @@ import 'package:optimus_opost/Pages/notifications/notifications.dart';
 import 'package:optimus_opost/Pages/shipments/driver_orders/driver_orders.dart';
 import 'package:optimus_opost/Pages/shipments/shipment_card_widget.dart';
 import 'package:optimus_opost/Server/server.dart';
+import 'package:optimus_opost/Server/order_refresh_bus.dart';
+import 'package:optimus_opost/Server/driver_topic.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../Server/functions.dart';
 // ignore: depend_on_referenced_packages
@@ -45,6 +47,11 @@ class _ShipmentsState extends State<Shipments> {
   bool status = false;
   String driverSerial = "";
   String driverName = "";
+  double _balance = 0.0;
+  double _commissionRate = 0.0;
+  bool _lowBalance = false;
+  bool _blocked = false;
+  int _ordersRemaining = -1;
   List<dynamic> previousShipments = [];
   List<String> seenShipmentIds = [];
   int currentPage = 1;
@@ -99,6 +106,42 @@ class _ShipmentsState extends State<Shipments> {
       if (_isFetching) return;
       await fetchShipments(false, page: 1);
     });
+
+    // Refresh instantly when a new-order push arrives (don't wait for the
+    // next 8s poll). Critical for fast/smooth updates on 3G.
+    OrderRefreshBus.tick.addListener(_onPushRefresh);
+  }
+
+  void _onPushRefresh() {
+    if (!mounted) return;
+    fetchBalance(); // a recharge push also updates the balance
+    if (_isFetching) return;
+    fetchShipments(false, page: 1);
+  }
+
+  Future<void> fetchBalance() async {
+    if (salesmanId.isEmpty) return;
+    try {
+      final res = await getRequest("$URL_DRIVER_BALANCE$salesmanId");
+      if (res is Map && res["balance"] != null) {
+        final b = double.tryParse(res["balance"].toString()) ?? 0.0;
+        final low = res["low_balance"] == true;
+        final blocked = res["blocked"] == true;
+        final rate = double.tryParse(res["commission_rate"].toString()) ?? 0.0;
+        final remaining = res["orders_remaining"] == null
+            ? -1
+            : int.tryParse(res["orders_remaining"].toString()) ?? -1;
+        if (mounted) {
+          setState(() {
+            _balance = b;
+            _commissionRate = rate;
+            _lowBalance = low;
+            _blocked = blocked;
+            _ordersRemaining = remaining;
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   // DISABLED: flutter_tts - plugin disabled
@@ -118,6 +161,7 @@ class _ShipmentsState extends State<Shipments> {
     // Immediately refresh when app comes back to the foreground.
     _isAppInForeground = true;
     if (!mounted) return;
+    fetchBalance();
     if (_isFetching) return;
     await fetchShipments(false, page: 1);
   }
@@ -226,6 +270,7 @@ class _ShipmentsState extends State<Shipments> {
   @override
   void dispose() {
     _timer?.cancel();
+    OrderRefreshBus.tick.removeListener(_onPushRefresh);
     _autoRejectTimers.forEach((_, t) => t.cancel());
     _hideButtonTimers.forEach((_, t) => t.cancel());
     // DISABLED: flutter_tts - plugin disabled
@@ -270,6 +315,7 @@ class _ShipmentsState extends State<Shipments> {
     }
 
     await fetchShipments(false, page: 1);
+    fetchBalance();
   }
 
   /// Helper to persist seen id in SharedPreferences (idempotent)
@@ -711,6 +757,10 @@ class _ShipmentsState extends State<Shipments> {
         // Refresh the shipments list
         await fetchShipments(true, page: 1);
 
+        // Balance changes when an order is delivered (company commission is
+        // deducted server-side) — refresh it so the banner updates instantly.
+        fetchBalance();
+
         // Send notification to user
         await sendNotification(
           userIds: [userId],
@@ -1003,8 +1053,82 @@ class _ShipmentsState extends State<Shipments> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+            _balanceBanner(),
+            if (_blocked || _lowBalance) ...[
+              const SizedBox(height: 10),
+              _warningBanner(),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _warningBanner() {
+    final bool blocked = _blocked;
+    final Color bg = blocked ? const Color(0xFFB71C1C) : const Color(0xFFFF8F00);
+    final IconData icon =
+        blocked ? Icons.block : Icons.warning_amber_rounded;
+    final String text = blocked
+        ? "توقّف استقبال الطلبات — رصيدك انتهى. الرجاء شحن الرصيد لاستئناف استلام الطلبات."
+        : (_ordersRemaining >= 0
+            ? "رصيدك قارب على الانتهاء — يكفي لحوالي $_ordersRemaining طلبيات. الرجاء الشحن قريباً."
+            : "رصيدك قارب على الانتهاء — الرجاء الشحن قريباً.");
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _balanceBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.16),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.25)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.account_balance_wallet_rounded,
+              color: Colors.white, size: 26),
+          const SizedBox(width: 12),
+          const Text(
+            "الرصيد الحالي",
+            style: TextStyle(
+                color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const Spacer(),
+          Text(
+            "${_balance.toStringAsFixed(2)} شيكل",
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }
@@ -1313,6 +1437,22 @@ class _ShipmentsState extends State<Shipments> {
             ),
           ),
           const SizedBox(height: 8),
+          _drawerInfo(
+            icon: Icons.percent_rounded,
+            label: 'نسبة العمولة',
+            value: '${_commissionRate.toStringAsFixed(_commissionRate % 1 == 0 ? 0 : 2)}%',
+            valueColor: const Color(0xFFE67E22),
+          ),
+          _drawerInfo(
+            icon: Icons.account_balance_wallet_rounded,
+            label: 'الرصيد الحالي',
+            value: '${_balance.toStringAsFixed(2)} شيكل',
+            valueColor: _blocked
+                ? Colors.red.shade700
+                : (_lowBalance ? const Color(0xFFFF8F00) : const Color(0xFF218049)),
+          ),
+          const Divider(height: 1),
+          const SizedBox(height: 4),
           _drawerItem(
             icon: Icons.list_alt_rounded,
             label: 'طلبيات السائق',
@@ -1346,6 +1486,8 @@ class _ShipmentsState extends State<Shipments> {
             label: 'تسجيل الخروج',
             color: Colors.red.shade600,
             onTap: () async {
+              // Stop targeted pushes to THIS device after logout.
+              await DriverTopic.unsubscribeForCurrentUser();
               SharedPreferences prefs = await SharedPreferences.getInstance();
               await prefs.setBool('login', false);
               if (!mounted) return;
@@ -1357,6 +1499,39 @@ class _ShipmentsState extends State<Shipments> {
             },
           ),
           const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerInfo({
+    required IconData icon,
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey.shade600, size: 20),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: TextStyle(
+                color: Colors.grey.shade700,
+                fontSize: 14,
+                fontWeight: FontWeight.w500),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor ?? Colors.black87,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );

@@ -15,3 +15,4 @@ var URL_ADD_LOCATION = URL + "consignee/tracking/shipment/location";
 var URL_CONFIRM_SHIPMENT = URL + "confirm-order";
 var URL_REJECT_SHIPMENT = URL + "reject-order";
 var URL_SEND_NOTIFICATION = URL + "notify/specific";
+var URL_DRIVER_BALANCE = URL + "driver-balance/";
