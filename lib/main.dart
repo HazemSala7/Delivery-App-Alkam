@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:optimus_opost/firebase_options.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:optimus_opost/Server/order_refresh_bus.dart';
 import 'package:optimus_opost/Server/driver_topic.dart';
@@ -79,7 +80,9 @@ void main() async {
 
       // Defensive Firebase init — never let it crash the app.
       try {
-        await Firebase.initializeApp();
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
         FirebaseMessaging.onBackgroundMessage(
             _firebaseMessagingBackgroundHandler);
         await _initLocalNotifications();
