@@ -3,9 +3,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+// DISABLED: Google Maps - plugin disabled
+// import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
-import 'package:location/location.dart';
+// import 'package:location/location.dart'; // Disabled - location plugin removed
 import 'package:optimus_opost/Constants/constants.dart';
 import 'package:optimus_opost/Server/functions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,32 +74,24 @@ class _DetectLocationDialogState extends State<DetectLocationDialog> {
                           flex: 1,
                           child: InkWell(
                             onTap: () async {
-                              showDialog(
-                                context: context,
-                                builder: (BuildContext context) {
-                                  return AlertDialog(
-                                    content: SizedBox(
-                                        height: 100,
-                                        width: 100,
-                                        child: Center(
-                                            child: CircularProgressIndicator(
-                                          color: MAINCOLOR,
-                                        ))),
-                                  );
-                                },
+                              // Location plugin disabled - show message
+                              Fluttertoast.showToast(
+                                msg:
+                                    "Location plugin disabled. Please enter coordinates manually.",
+                                toastLength: Toast.LENGTH_LONG,
                               );
-                              LocationData? currentLocation;
-                              var location = new Location();
-                              try {
-                                currentLocation = await location.getLocation();
-                              } on Exception {
-                                currentLocation = null;
-                              }
-                              addLocation(
-                                  context,
-                                  currentLocation!.latitude,
-                                  currentLocation.longitude,
-                                  widget.shipment_id);
+                              // LocationData? currentLocation;
+                              // var location = new Location();
+                              // try {
+                              //   currentLocation = await location.getLocation();
+                              // } on Exception {
+                              //   currentLocation = null;
+                              // }
+                              // addLocation(
+                              //     context,
+                              //     currentLocation!.latitude,
+                              //     currentLocation.longitude,
+                              //     widget.shipment_id);
                             },
                             child: Container(
                               height: 50,

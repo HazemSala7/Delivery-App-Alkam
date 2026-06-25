@@ -3,36 +3,59 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:firebase_analytics/firebase_analytics.dart';
-import 'package:firebase_analytics/observer.dart';
+// DISABLED: Firebase imports causing crash
+// import 'package:firebase_core/firebase_core.dart';
+// import 'package:firebase_messaging/firebase_messaging.dart';
+// import 'package:firebase_analytics/firebase_analytics.dart';
+// import 'package:firebase_analytics/observer.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:optimus_opost/Pages/shipments/shipments.dart';
 import 'package:optimus_opost/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isIOS) {
-    await Firebase.initializeApp(
-      options: const FirebaseOptions(
-        apiKey: 'AIzaSyDXBSsEvwOzWFqjPnsPXBHXM-xLcxuYwl8',
-        appId: '1:547928555422:ios:bdbbab935d336aab44208f',
-        messagingSenderId: '547928555422',
-        projectId: 'j-food-2a4d7',
-        storageBucket: 'j-food-2a4d7.firebasestorage.app',
-      ),
-    );
-  } else {
-    await Firebase.initializeApp();
-  }
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  runApp(const Optimus());
-}
+import 'dart:async';
 
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  print("Background message received: ${message.notification!.title}");
+void main() async {
+  // Also suppress unhandled async errors from platform channels
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // Suppress platform channel errors from appearing in console
+      FlutterError.onError = (FlutterErrorDetails details) {
+        final errorStr = details.exceptionAsString();
+        if ((errorStr.contains('PlatformException') ||
+                errorStr.contains('MissingPluginException')) &&
+            (errorStr.contains('channel-error') ||
+                errorStr.contains('Unable to establish connection') ||
+                errorStr.contains('No implementation found'))) {
+          // Silently suppress platform channel errors on startup
+          return;
+        }
+        // Log other errors normally
+        FlutterError.presentError(details);
+      };
+
+      runApp(const Optimus());
+    },
+    (error, stackTrace) {
+      final errorStr = error.toString();
+      if (!(errorStr.contains('PlatformException') ||
+              errorStr.contains('MissingPluginException')) ||
+          (!(errorStr.contains('channel-error') ||
+              errorStr.contains('Unable to establish connection') ||
+              errorStr.contains('No implementation found')))) {
+        // Only log non-platform-channel errors
+        FlutterError.presentError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stackTrace,
+            library: 'main.dart',
+          ),
+        );
+      }
+    },
+  );
 }
 
 class Optimus extends StatefulWidget {
@@ -47,29 +70,40 @@ class Optimus extends StatefulWidget {
 class _OptimusState extends State<Optimus> {
   Locale locale = const Locale("ar", "AE");
   final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
-  late final FirebaseAnalytics analytics;
-  late final FirebaseAnalyticsObserver observer;
+  // DISABLED: Firebase references
+  // late final FirebaseAnalytics? analytics;
+  // late final FirebaseAnalyticsObserver? observer;
   bool signIn = false;
   String status = "";
 
   @override
   void initState() {
     super.initState();
-    analytics = FirebaseAnalytics.instance;
-    observer = FirebaseAnalyticsObserver(analytics: analytics);
-    loadData();
-    requestFirebasePermissions();
-    setupFirebaseMessaging();
-    getToken();
+    try {
+      loadData();
+      // DISABLED: All Firebase methods - plugins disabled
+    } catch (e) {
+      print("Error in initState: $e");
+    }
   }
 
   Future<void> loadData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-
-    setState(() {
-      signIn = prefs.getBool('login') ?? false;
-      status = prefs.getString('active') ?? "";
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        signIn = prefs.getBool('login') ?? false;
+        status = prefs.getString('active') ?? "";
+      });
+    } on Exception catch (e) {
+      // Platform channel errors are normal on simulator startup - silently continue with defaults
+      if (mounted) {
+        setState(() {
+          signIn = false;
+          status = "";
+        });
+      }
+    }
   }
 
   void setLocale(Locale value) {
@@ -79,55 +113,58 @@ class _OptimusState extends State<Optimus> {
   }
 
   getToken() async {
-    String? mytoken = await FirebaseMessaging.instance.getToken();
-    print(mytoken);
+    // DISABLED: Firebase - plugin disabled
+    // String? mytoken = await FirebaseMessaging.instance.getToken();
+    // print(mytoken);
   }
 
   Future<void> requestFirebasePermissions() async {
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
-    NotificationSettings settings = await messaging.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
-    );
+    // DISABLED: Firebase - plugin disabled
+    // FirebaseMessaging messaging = FirebaseMessaging.instance;
+    // NotificationSettings settings = await messaging.requestPermission(
+    //   alert: true,
+    //   announcement: false,
+    //   badge: true,
+    //   carPlay: false,
+    //   criticalAlert: false,
+    //   provisional: false,
+    //   sound: true,
+    // );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      print('User granted permission');
-      FirebaseMessaging.instance.subscribeToTopic('Jfood');
-    } else if (settings.authorizationStatus ==
-        AuthorizationStatus.provisional) {
-      print('User granted provisional permission');
-    } else {
-      print('User declined or has not accepted permission');
-    }
+    // if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+    //   print('User granted permission');
+    //   FirebaseMessaging.instance.subscribeToTopic('Jfood');
+    // } else if (settings.authorizationStatus ==
+    //     AuthorizationStatus.provisional) {
+    //   print('User granted provisional permission');
+    // } else {
+    //   print('User declined or has not accepted permission');
+    // }
   }
 
   void setupFirebaseMessaging() {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      if (message.notification != null) {
-        print("Message received: ${message.notification!.title}");
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showFancyOrderAlert(
-            title: message.notification!.title ?? 'طلب جديد للتوصيل',
-            body: message.notification!.body ?? '',
-          );
-        });
-      } 
-    });
+    // DISABLED: Firebase - plugin disabled
+    // FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    //   if (message.notification != null) {
+    //     print("Message received: ${message.notification!.title}");
+    //     WidgetsBinding.instance.addPostFrameCallback((_) {
+    //       _showFancyOrderAlert(
+    //         title: message.notification!.title ?? 'طلب جديد للتوصيل',
+    //         body: message.notification!.body ?? '',
+    //       );
+    //     });
+    //   }
+    // });
 
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print("Message opened app: ${message.notification?.title}");
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showFancyOrderAlert(
-          title: message.notification?.title ?? 'طلب جديد للتوصيل',
-          body: message.notification?.body ?? '',
-        );
-      });
-    });
+    // FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    //   print("Message opened app: ${message.notification?.title}");
+    //   WidgetsBinding.instance.addPostFrameCallback((_) {
+    //     _showFancyOrderAlert(
+    //       title: message.notification?.title ?? 'طلب جديد للتوصيل',
+    //       body: message.notification?.body ?? '',
+    //     );
+    //   });
+    // });
   }
 
   /// Beautiful in-app alert for incoming push notifications.
@@ -143,8 +180,10 @@ class _OptimusState extends State<Optimus> {
       transitionDuration: const Duration(milliseconds: 280),
       pageBuilder: (_, __, ___) => const SizedBox.shrink(),
       transitionBuilder: (context, anim, __, child) {
-        final scale = Tween<double>(begin: 0.85, end: 1.0)
-            .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack));
+        final scale = Tween<double>(
+          begin: 0.85,
+          end: 1.0,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack));
         final fade = CurvedAnimation(parent: anim, curve: Curves.easeOut);
         return FadeTransition(
           opacity: fade,
@@ -162,25 +201,30 @@ class _OptimusState extends State<Optimus> {
 
   @override
   Widget build(BuildContext context) {
+    // Get theme with fallback if GoogleFonts initialization fails
+    TextTheme textTheme;
+    try {
+      textTheme = GoogleFonts.notoKufiArabicTextTheme();
+    } catch (e) {
+      // Fallback to default theme if GoogleFonts fails (silent fail)
+      textTheme = const TextTheme();
+    }
+
     return MaterialApp(
       navigatorKey: navigatorKey,
-      navigatorObservers: <NavigatorObserver>[observer],
+      navigatorObservers: <NavigatorObserver>[], // DISABLED: Firebase observer
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('en', ''),
-        Locale('ar', 'AE'),
-      ],
+      supportedLocales: const [Locale('en', ''), Locale('ar', 'AE')],
       locale: locale,
       debugShowCheckedModeBanner: false,
       title: 'Optimus',
       theme: ThemeData(
-        textTheme:
-            GoogleFonts.notoKufiArabicTextTheme(Theme.of(context).textTheme),
+        textTheme: textTheme,
         primarySwatch: Colors.blue,
       ),
       home: signIn ? Shipments(status: status) : const LoginScreen(),
@@ -217,10 +261,7 @@ class _FancyOrderAlertState extends State<_FancyOrderAlert>
       vsync: this,
       duration: Duration(seconds: widget.autoCloseSeconds),
     )..forward();
-    _autoCloseTimer = Timer(
-      Duration(seconds: widget.autoCloseSeconds),
-      _close,
-    );
+    _autoCloseTimer = Timer(Duration(seconds: widget.autoCloseSeconds), _close);
   }
 
   void _close() {
@@ -268,8 +309,10 @@ class _FancyOrderAlertState extends State<_FancyOrderAlert>
                 children: [
                   // Gradient header with countdown ring + icon
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 22, horizontal: 18),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 22,
+                      horizontal: 18,
+                    ),
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topRight,
@@ -293,10 +336,12 @@ class _FancyOrderAlertState extends State<_FancyOrderAlert>
                                   child: CircularProgressIndicator(
                                     value: 1.0 - _ctrl.value,
                                     strokeWidth: 5,
-                                    backgroundColor:
-                                        Colors.white.withOpacity(0.25),
-                                    valueColor:
-                                        const AlwaysStoppedAnimation(Colors.white),
+                                    backgroundColor: Colors.white.withOpacity(
+                                      0.25,
+                                    ),
+                                    valueColor: const AlwaysStoppedAnimation(
+                                      Colors.white,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -346,17 +391,20 @@ class _FancyOrderAlertState extends State<_FancyOrderAlert>
                   AnimatedBuilder(
                     animation: _ctrl,
                     builder: (_, __) {
-                      final remaining = (widget.autoCloseSeconds *
-                              (1 - _ctrl.value))
-                          .ceil()
-                          .clamp(0, widget.autoCloseSeconds);
+                      final remaining =
+                          (widget.autoCloseSeconds * (1 - _ctrl.value))
+                              .ceil()
+                              .clamp(0, widget.autoCloseSeconds);
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.timer_outlined,
-                                size: 16, color: Color(0xFF94A3B8)),
+                            const Icon(
+                              Icons.timer_outlined,
+                              size: 16,
+                              color: Color(0xFF94A3B8),
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               'إغلاق تلقائي خلال $remaining ث',

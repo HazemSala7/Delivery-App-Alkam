@@ -4,7 +4,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:flutter_tts/flutter_tts.dart';
+// DISABLED: flutter_tts - plugin disabled
+// import 'package:flutter_tts/flutter_tts.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:optimus_opost/Constants/constants.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
@@ -19,10 +20,14 @@ import 'package:http/http.dart' as http;
 
 class Shipments extends StatefulWidget {
   final String status;
+  final String? accessToken;
+  final String? salesmanId;
 
   const Shipments({
     super.key,
     required this.status,
+    this.accessToken,
+    this.salesmanId,
   });
 
   @override
@@ -33,6 +38,7 @@ class _ShipmentsState extends State<Shipments> {
   bool searchCheck = false;
   TextEditingController searchController = TextEditingController();
   String salesmanId = "";
+  String accessToken = "";
   bool isLoading = false;
   late StreamController<List<dynamic>> _streamController;
   Timer? _timer;
@@ -54,7 +60,8 @@ class _ShipmentsState extends State<Shipments> {
   Map<String, int> _remainingSecondsForShipment = {};
 
   // --- New-order announcement / live-update plumbing ---
-  final FlutterTts _tts = FlutterTts();
+  // DISABLED: flutter_tts - plugin disabled
+  // final FlutterTts _tts = FlutterTts();
   final AudioPlayer _alertPlayer = AudioPlayer();
   bool _ttsReady = false;
   bool _isFetching = false;
@@ -70,9 +77,13 @@ class _ShipmentsState extends State<Shipments> {
     super.initState();
     _streamController = StreamController<List<dynamic>>();
     status = widget.status == "true";
-    WidgetsBinding.instance
-        .addObserver(_LifecycleHook(onResume: _onAppResumed, onPause: _onAppPaused));
-    _initTts();
+    accessToken = widget.accessToken ?? "";
+    salesmanId = widget.salesmanId ?? "";
+    print("🔐 [SHIPMENTS] Received accessToken from login: ${accessToken.isNotEmpty ? accessToken.substring(0, 20) + '...' : 'EMPTY'}");
+    print("🆔 [SHIPMENTS] Received salesmanId from login: $salesmanId");
+    WidgetsBinding.instance.addObserver(
+        _LifecycleHook(onResume: _onAppResumed, onPause: _onAppPaused));
+    // _initTts(); // DISABLED: flutter_tts - plugin disabled
     // restore auto-reject timers from prefs before first fetch
     _restoreAutoRejectTimers();
     // initial load
@@ -90,17 +101,18 @@ class _ShipmentsState extends State<Shipments> {
     });
   }
 
-  Future<void> _initTts() async {
-    try {
-      await _tts.setLanguage("ar-SA");
-      await _tts.setSpeechRate(0.5);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.05);
-      _ttsReady = true;
-    } catch (e) {
-      debugPrint("TTS init failed: $e");
-    }
-  }
+  // DISABLED: flutter_tts - plugin disabled
+  // Future<void> _initTts() async {
+  //   try {
+  //     await _tts.setLanguage("ar-SA");
+  //     await _tts.setSpeechRate(0.5);
+  //     await _tts.setVolume(1.0);
+  //     await _tts.setPitch(1.05);
+  //     _ttsReady = true;
+  //   } catch (e) {
+  //     debugPrint("TTS init failed: $e");
+  //   }
+  // }
 
   Future<void> _onAppResumed() async {
     // Immediately refresh when app comes back to the foreground.
@@ -126,22 +138,22 @@ class _ShipmentsState extends State<Shipments> {
     // Try a louder asset chime if user provided one.
     try {
       await _alertPlayer.stop();
-      await _alertPlayer.play(AssetSource('notification.mp3'),
-          volume: 1.0);
+      await _alertPlayer.play(AssetSource('notification.mp3'), volume: 1.0);
     } catch (_) {
       // No asset is fine — TTS will still announce.
     }
-    if (_ttsReady) {
-      try {
-        await _tts.stop();
-        final msg = orderId == null
-            ? "لديك طلب جديد"
-            : "لديك طلب جديد رقم $orderId";
-        await _tts.speak(msg);
-      } catch (e) {
-        debugPrint("TTS speak failed: $e");
-      }
-    }
+    // DISABLED: flutter_tts - plugin disabled
+    // if (_ttsReady) {
+    //   try {
+    //     await _tts.stop();
+    //     final msg = orderId == null
+    //         ? "لديك طلب جديد"
+    //         : "لديك طلب جديد رقم $orderId";
+    //     await _tts.speak(msg);
+    //   } catch (e) {
+    //     debugPrint("TTS speak failed: $e");
+    //   }
+    // }
   }
 
   /// Restore/hydrate any delivery-button hide timers previously saved in prefs.
@@ -216,9 +228,10 @@ class _ShipmentsState extends State<Shipments> {
     _timer?.cancel();
     _autoRejectTimers.forEach((_, t) => t.cancel());
     _hideButtonTimers.forEach((_, t) => t.cancel());
-    try {
-      _tts.stop();
-    } catch (_) {}
+    // DISABLED: flutter_tts - plugin disabled
+    // try {
+    //   _tts.stop();
+    // } catch (_) {}
     try {
       _alertPlayer.dispose();
     } catch (_) {}
@@ -230,29 +243,31 @@ class _ShipmentsState extends State<Shipments> {
   }
 
   Future<void> loadData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      String resolvedSalesmanId = salesmanId.isNotEmpty ? salesmanId : (prefs.getString('salesmanId') ?? "");
+      final serial = prefs.getString('driver_serial') ?? "";
+      if (resolvedSalesmanId.trim().isEmpty && serial.trim().isNotEmpty) {
+        resolvedSalesmanId = serial;
+      }
 
-    // Resolve the salesman id used by the orders API. Older builds may have
-    // saved the wrong field; fall back to driver_serial which is the value
-    // the backend keys orders by (e.g. "8608").
-    String resolvedSalesmanId = prefs.getString('salesmanId') ?? "";
-    final serial = prefs.getString('driver_serial') ?? "";
-    if (resolvedSalesmanId.trim().isEmpty && serial.trim().isNotEmpty) {
-      resolvedSalesmanId = serial;
-      await prefs.setString('salesmanId', resolvedSalesmanId);
+      setState(() {
+        salesmanId = resolvedSalesmanId;
+        driverName = prefs.getString('driver_name') ?? "";
+        driverSerial = serial;
+        seenShipmentIds = prefs.getStringList('seenShipmentIds') ?? [];
+        rejectedShipmentIds = prefs.getStringList('rejectedShipmentIds') ?? [];
+        isLoading = true;
+      });
+
+      debugPrint("[Shipments] resolved salesmanId='$salesmanId' "
+          "driver_serial='$driverSerial'");
+    } catch (e) {
+      print("⚠️ [SHIPMENTS] Could not load data from SharedPreferences (non-blocking): $e");
+      setState(() {
+        isLoading = true;
+      });
     }
-
-    setState(() {
-      salesmanId = resolvedSalesmanId;
-      driverName = prefs.getString('driver_name') ?? "";
-      driverSerial = serial;
-      seenShipmentIds = prefs.getStringList('seenShipmentIds') ?? [];
-      rejectedShipmentIds = prefs.getStringList('rejectedShipmentIds') ?? [];
-      isLoading = true;
-    });
-
-    debugPrint("[Shipments] resolved salesmanId='$salesmanId' "
-        "driver_serial='$driverSerial'");
 
     await fetchShipments(false, page: 1);
   }
@@ -291,7 +306,9 @@ class _ShipmentsState extends State<Shipments> {
       }
 
       final String url = "$URL_SHIPMENTS/$salesmanId?page=$page";
-      final response = await getRequest(url);
+      print("📡 [SHIPMENTS] Fetching from: $url");
+      final response = await getRequest(url, token: accessToken);
+      print("📊 [SHIPMENTS] API response received");
       if (response is Map &&
           response["orders"] is Map &&
           response["orders"]["data"] is List) {
@@ -940,7 +957,9 @@ class _ShipmentsState extends State<Shipments> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        driverName.isEmpty ? "مرحباً بك" : "مرحباً، $driverName",
+                        driverName.isEmpty
+                            ? "مرحباً بك"
+                            : "مرحباً، $driverName",
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.85),
                           fontSize: 12,
@@ -1358,8 +1377,7 @@ class _ShipmentsState extends State<Shipments> {
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               children: [
                 Container(

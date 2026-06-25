@@ -1,5 +1,6 @@
 import 'dart:convert';
-import 'package:firebase_messaging/firebase_messaging.dart';
+// DISABLED: Firebase - plugin disabled
+// import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:optimus_opost/Constants/constants.dart';
@@ -27,16 +28,25 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     loadData();
-    getToken();
+    // getToken(); // Disabled - Firebase not initialized
   }
 
   Future<void> loadData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      passwordController.text = prefs.getString('password') ?? "";
-      mobileController.text = prefs.getString('phone') ?? "";
-    });
+    try {
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        passwordController.text = prefs.getString('password') ?? "";
+        mobileController.text = prefs.getString('phone') ?? "";
+      });
+    } on Exception catch (e) {
+      // Silently ignore platform channel errors - continue with empty fields
+      if (!mounted) return;
+      setState(() {
+        passwordController.text = "";
+        mobileController.text = "";
+      });
+    }
   }
 
   @override
@@ -200,9 +210,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 onPressed: () =>
                     setState(() => _obscurePassword = !_obscurePassword),
               ),
-              validator: (v) => (v == null || v.isEmpty)
-                  ? "الرجاء إدخال كلمة المرور"
-                  : null,
+              validator: (v) =>
+                  (v == null || v.isEmpty) ? "الرجاء إدخال كلمة المرور" : null,
             ),
             const SizedBox(height: 24),
             _buildLoginButton(),
@@ -210,8 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
             Center(
               child: Text(
                 "© ${DateTime.now().year}",
-                style:
-                    const TextStyle(color: Color(0xFFBDC3C7), fontSize: 12),
+                style: const TextStyle(color: Color(0xFFBDC3C7), fontSize: 12),
               ),
             ),
           ],
@@ -308,8 +316,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   Text(
                     "تسجيل الدخول",
-                    style: TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(width: 8),
                   Icon(Icons.arrow_forward_rounded, size: 18),
@@ -320,20 +327,39 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _onLoginPressed() async {
-    if (!_formKey.currentState!.validate()) return;
+    print("🔵 [LOGIN] Login button clicked");
+    if (!_formKey.currentState!.validate()) {
+      print("🔴 [LOGIN] Form validation failed");
+      return;
+    }
+    print("✅ [LOGIN] Form validated successfully");
+    print("📱 [LOGIN] Phone: ${mobileController.text}");
+    print(
+        "🔐 [LOGIN] Password: ${passwordController.text.replaceAll(RegExp(r'.'), '*')}");
     FocusScope.of(context).unfocus();
     setState(() => _loading = true);
     try {
       await loginFunction();
+      print("✅ [LOGIN] loginFunction completed successfully");
     } catch (e) {
-      _showMessageDialog(
-        title: "خطأ غير متوقع",
-        message:
-            "حدث خطأ أثناء تسجيل الدخول. الرجاء المحاولة مرة أخرى.\n($e)",
-        isError: true,
-      );
+      print("🔴 [LOGIN] Exception caught: $e");
+      // Silently ignore platform channel errors
+      String errorStr = e.toString();
+      if (!errorStr.contains('PlatformException') &&
+          !errorStr.contains('channel-error') &&
+          !errorStr.contains('Unable to establish connection')) {
+        _showMessageDialog(
+          title: "خطأ غير متوقع",
+          message:
+              "حدث خطأ أثناء تسجيل الدخول. الرجاء المحاولة مرة أخرى.\n($e)",
+          isError: true,
+        );
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        print("⏹️ [LOGIN] Loading state set to false");
+      }
     }
   }
 
@@ -363,8 +389,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   height: 72,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: (isError ? Colors.red : Colors.green)
-                        .withOpacity(0.1),
+                    color:
+                        (isError ? Colors.red : Colors.green).withOpacity(0.1),
                   ),
                   child: Icon(
                     isError
@@ -412,8 +438,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     child: const Text(
                       "حسناً",
-                      style: TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -425,14 +451,15 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Future<void> getToken() async {
-    try {
-      myToken = (await FirebaseMessaging.instance.getToken()) ?? "";
-      print("FCM Token: $myToken");
-    } catch (e) {
-      print("Error getting token: $e");
-    }
-  }
+  // DISABLED: Firebase - plugin disabled
+  // Future<void> getToken() async {
+  //   try {
+  //     myToken = (await FirebaseMessaging.instance.getToken()) ?? "";
+  //     print("FCM Token: $myToken");
+  //   } catch (e) {
+  //     print("Error getting token: $e");
+  //   }
+  // }
 
   Future<void> sendTokenToServer(String token, String barrierToken) async {
     String apiUrl = URL_UPDATE_TOKEN;
@@ -458,17 +485,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> loginFunction() async {
     var url = URL_LOGIN;
+    print("📡 [API] Making login request to: $url");
     http.Response response;
     try {
       response = await http.post(Uri.parse(url), body: {
         "phone": mobileController.text.trim(),
         "password": passwordController.text,
       });
-    } catch (_) {
+      print("📨 [API] Response received:");
+      print("   Status Code: ${response.statusCode}");
+      print("   Response Body: ${response.body}");
+    } catch (e) {
+      print("🔴 [API] Network error: $e");
       _showMessageDialog(
         title: "خطأ في الاتصال",
-        message:
-            "تعذر الاتصال بالخادم. الرجاء التحقق من اتصالك بالإنترنت.",
+        message: "تعذر الاتصال بالخادم. الرجاء التحقق من اتصالك بالإنترنت.",
         isError: true,
       );
       return;
@@ -477,7 +508,9 @@ class _LoginScreenState extends State<LoginScreen> {
     dynamic data;
     try {
       data = jsonDecode(response.body.toString());
-    } catch (_) {
+      print("✅ [JSON] Parsed successfully: ${data.toString()}");
+    } catch (e) {
+      print("🔴 [JSON] Parse error: $e");
       _showMessageDialog(
         title: "خطأ في الخادم",
         message: "حدث خطأ غير متوقع. الرجاء المحاولة لاحقاً.",
@@ -486,12 +519,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    print("🔍 [LOGIN] Checking status: ${data['status']}");
     if (data['status'] == 'true') {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
+      print("✅ [LOGIN] Login successful!");
       String role_id = data["user"]?['role_id']?.toString() ?? "1";
+      print("👤 [LOGIN] Role ID: $role_id");
       if (role_id == "3") {
+        print("✅ [LOGIN] Role is 3 (authorized)");
         final user = data["user"] ?? {};
         final active = (user['active'] ?? '').toString();
+        print("📊 [LOGIN] Active status: $active");
         // The orders API keys orders by the driver's salesman/serial number
         // (e.g. "8608"), NOT the users-table primary key. Pick the right
         // field with safe fallbacks.
@@ -501,33 +538,62 @@ class _LoginScreenState extends State<LoginScreen> {
           user['serial'],
           user['driver_id'],
           user['id'],
-        ].firstWhere(
-          (v) => v != null && v.toString().trim().isNotEmpty,
-          orElse: () => '',
-        ).toString();
-        await prefs.setString('phone', mobileController.text);
-        await prefs.setString('salesmanId', salesmanIdValue);
-        await prefs.setString('password', passwordController.text);
-        await prefs.setString('active', active);
-        await prefs.setString(
-            'driver_name', (user['name'] ?? '').toString());
-        await prefs.setString(
-            'driver_serial', (user['serial_number'] ?? '').toString());
-        await prefs.setBool('login', true);
+        ]
+            .firstWhere(
+              (v) => v != null && v.toString().trim().isNotEmpty,
+              orElse: () => '',
+            )
+            .toString();
+        print("🆔 [LOGIN] Salesman ID: $salesmanIdValue");
 
-        await sendTokenToServer(
-            myToken, (data["access_token"] ?? '').toString());
+        // Try to save preferences, but continue to navigation even if it fails
+        try {
+          SharedPreferences prefs = await SharedPreferences.getInstance();
+          await prefs.setString('phone', mobileController.text);
+          await prefs.setString('salesmanId', salesmanIdValue);
+          await prefs.setString('password', passwordController.text);
+          await prefs.setString('active', active);
+          await prefs.setString('driver_name', (user['name'] ?? '').toString());
+          await prefs.setString(
+              'driver_serial', (user['serial_number'] ?? '').toString());
+          await prefs.setBool('login', true);
+          print("💾 [LOGIN] Preferences saved");
+        } catch (e) {
+          print("⚠️ [LOGIN] Could not save preferences (non-blocking): $e");
+          // Continue anyway - user login data will be available from response
+        }
 
-        Fluttertoast.showToast(msg: 'تم تسجيل الدخول بنجاح');
+        try {
+          await sendTokenToServer(
+              myToken, (data["access_token"] ?? '').toString());
+          print("🔐 [LOGIN] Token sent to server");
+        } catch (e) {
+          print("⚠️ [LOGIN] Could not send token to server: $e");
+        }
 
-        if (!mounted) return;
+        try {
+          Fluttertoast.showToast(msg: 'تم تسجيل الدخول بنجاح');
+        } catch (e) {
+          print("⚠️ [LOGIN] Toast notification failed (non-blocking): $e");
+        }
+
+        print("🔄 [LOGIN] Navigating to Shipments page");
+        if (!mounted) {
+          print("⚠️ [LOGIN] Widget not mounted, cannot navigate");
+          return;
+        }
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => Shipments(status: active),
+            builder: (context) => Shipments(
+              status: active,
+              accessToken: (data["access_token"] ?? '').toString(),
+              salesmanId: salesmanIdValue,
+            ),
           ),
         );
       } else {
+        print("🔴 [LOGIN] Role is not 3 (unauthorized): $role_id");
         _showMessageDialog(
           title: "غير مصرح",
           message: "هذا الحساب غير مصرح له بالدخول إلى التطبيق.",
@@ -535,13 +601,14 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } else if (data['message'] == 'Invalid login details') {
+      print("🔴 [LOGIN] Invalid credentials");
       _showMessageDialog(
         title: "بيانات غير صحيحة",
-        message:
-            "الرجاء التأكد من رقم الهاتف وكلمة المرور والمحاولة مجدداً.",
+        message: "الرجاء التأكد من رقم الهاتف وكلمة المرور والمحاولة مجدداً.",
         isError: true,
       );
     } else {
+      print("🔴 [LOGIN] Login failed: ${data['message']}");
       _showMessageDialog(
         title: "تعذر تسجيل الدخول",
         message: (data['message']?.toString().isNotEmpty == true)

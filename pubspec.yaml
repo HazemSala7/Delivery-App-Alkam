@@ -21,18 +21,21 @@ dependencies:
   flutter_spinkit: ^5.2.0
   fluttertoast: ^8.2.4
   shared_preferences: ^2.2.3
-  google_maps_flutter: ^2.6.1
-  location: ^6.0.2
+  # DISABLED FOR DEBUGGING - Causes iOS crash
+  # google_maps_flutter: ^2.6.1
+  # location: ^6.0.2  # Temporarily disabled to test crashes
   crypto: ^3.0.3
 
-  firebase_core: ^3.15.1
-  firebase_messaging: ^15.2.9
-  firebase_storage: ^12.4.9
-  firebase_analytics: ^11.5.2
-  cloud_firestore: ^5.6.11
+  # DISABLED FOR DEBUGGING - Firebase causes iOS crash
+  # firebase_core: ^3.15.1
+  # firebase_messaging: ^15.2.9
+  # firebase_storage: ^12.4.9
+  # firebase_analytics: ^11.5.2
+  # cloud_firestore: ^5.6.11
 
   web_socket_channel: ^3.0.3
-  flutter_tts: ^4.2.0
+  # DISABLED FOR DEBUGGING - Causes iOS Sendable protocol error
+  # flutter_tts: ^4.2.0
   audioplayers: ^6.1.0
 
 dev_dependencies:

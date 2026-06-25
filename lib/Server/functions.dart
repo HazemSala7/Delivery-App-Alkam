@@ -31,10 +31,28 @@ var headers = {
   "Accept": "application/json"
 };
 
-getRequest(API_URL) async {
+getRequest(API_URL, {String? token}) async {
   // Hard timeout so a stalled network can't pile up polling requests.
+  final requestHeaders = {
+    'ContentType': 'application/json',
+    "Device-Id": "postman-device-id",
+    "Device-Token": "postman-random-token",
+    "Device-Os": "Windows",
+    "Accept": "application/json",
+  };
+  
+  // Use provided token, fallback to SharedPreferences, then fallback to hardcoded
+  if (token != null && token.isNotEmpty) {
+    requestHeaders["Authorization"] = "Bearer $token";
+    print("📡 [API] Using fresh token from login");
+  } else {
+    requestHeaders["Authorization"] =
+        "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIyIiwianRpIjoiZDQ3NWUwMDJkNjBiNGYxYjEzOTg0ZWJhZjJhZTVlYzdmMjk2OTdlYzc1NTY0ZDM5OTJiYzc2MzU1MWQ4MGEzOWMyMjVkMzIxOTNjZjQ2Y2UiLCJpYXQiOjE2ODE1NjA3MDguMzMyNDk1LCJuYmYiOjE2ODE1NjA3MDguMzMyNDk4LCJleHAiOjE3MTMxODMxMDguMzA3Mzc3LCJzdWIiOiI1NTgiLCJzY29wZXMiOltdfQ.U78WSUzrajlBtv1ddKsngqjD8JaKcHdGrKHyNANyI9YVt4Q1Cw4AckE5U6xdZbDcG7M6cPIJXiyJXgFqfuMhzELPWNwoXGeMxylEq64T5ww7k5bKJFs5BB3Kp4b4OBx8-dcsxZ5gxegMAn8iI8k-GLQlmZjaG29RxJXqTnslxvSKK2Ur0AiRl7QNd464EDl7vwRyFKkPwgbpkOkTmCKzjLK7eVHpsoQMie3e37wDvFeSozadljII960Q_gLJ_yRRXtGeL-Ie3uI5qbrqkcH4D7hhaYeOlbpiiRdx4byW3EPcNEhGnOjTNtWN3MnCPHbRj-_dGz0-70TsMq-sXcT4C7eQYwro42WlZSfDvtI2J5tM9PUs7aOL3DO4uoM52bpSzUuj3nEDIagaOTOCeLV5zRdFSXSNHz_VNMfqWMZmLX0Ii-ILX4_zWrW4iJ5KAxXj04-RuyMP4uOlmZYAVAn7O7BCm90QEpEG6mom4j8ARhF26id3fu8KydWVGeOa3aGZnP80j406UlplZKODeHKlnRtGc8g9695OTifq_VHQWHBX7n89RVm0l2p3q3NDd03ZdkURxaqBf6mJgrqXhyGoBPCM9Ul8d4z7IhCb1bVSHIoEbgsitDOkYpwvTL7ezNTcNWPLSDKa6dLE6Xuao_kTdL0AwbZqKbctkY1t9P6Ates";
+    print("📡 [API] Using default token (SharedPreferences not available)");
+  }
+  
   var response = await http
-      .get(Uri.parse(API_URL), headers: headers)
+      .get(Uri.parse(API_URL), headers: requestHeaders)
       .timeout(const Duration(seconds: 8));
   var res = jsonDecode(response.body);
   return res;

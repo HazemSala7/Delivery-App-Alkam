@@ -3,7 +3,8 @@ import 'dart:io';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:flutter/material.dart';
 import 'package:optimus_opost/Pages/shipment_detail/add_note_diaog/add_note_dialog.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+// DISABLED: Google Maps - plugin disabled
+// import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:flutter/gestures.dart';
 import 'package:optimus_opost/Pages/shipment_detail/detect_location/detect_location.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -65,12 +66,13 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
   bool details = true;
   bool con = false;
   bool status = false;
-  late GoogleMapController mapController;
-  Map<MarkerId, Marker> markers = <MarkerId, Marker>{};
+  // DISABLED: google_maps_flutter - plugin disabled
+  // late GoogleMapController mapController;
+  // Map<MarkerId, Marker> markers = <MarkerId, Marker>{};
 
-  void _onMapCreated(GoogleMapController controller) {
-    mapController = controller;
-  }
+  // void _onMapCreated(GoogleMapController controller) {
+  //   mapController = controller;
+  // }
 
   void showContactOptions(BuildContext context, String phone) async {
     showDialog(
@@ -334,37 +336,45 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                                 width: double.infinity,
                                 height:
                                     MediaQuery.of(context).size.height - 170,
-                                child: GoogleMap(
-                                  onMapCreated: _onMapCreated,
-                                  initialCameraPosition: CameraPosition(
-                                    target: LatLng(
-                                        double.parse(
-                                            widget.lattitude.toString()),
-                                        double.parse(
-                                            widget.longitude.toString())),
-                                    zoom: 11.0,
+                                child: Center(
+                                  child: Text(
+                                    "Maps disabled - plugin removed",
+                                    style:
+                                        Theme.of(context).textTheme.bodyMedium,
                                   ),
-                                  markers: {
-                                    Marker(
-                                      markerId: const MarkerId("marker1"),
-                                      position: LatLng(
-                                          double.parse(
-                                              widget.lattitude.toString()),
-                                          double.parse(
-                                              widget.longitude.toString())),
-                                      draggable: true,
-                                      onDragEnd: (value) {
-                                        // value is the new position
-                                      },
-                                      icon: BitmapDescriptor.defaultMarker,
-                                    ),
-                                    const Marker(
-                                      markerId: MarkerId("marker2"),
-                                      position: LatLng(37.415768808487435,
-                                          -122.08440050482749),
-                                    ),
-                                  },
                                 ),
+                                // DISABLED: google_maps_flutter - plugin disabled
+                                // GoogleMap(
+                                //   onMapCreated: _onMapCreated,
+                                //   initialCameraPosition: CameraPosition(
+                                //     target: LatLng(
+                                //         double.parse(
+                                //             widget.lattitude.toString()),
+                                //         double.parse(
+                                //             widget.longitude.toString())),
+                                //     zoom: 11.0,
+                                //   ),
+                                //   markers: {
+                                //     Marker(
+                                //       markerId: const MarkerId("marker1"),
+                                //       position: LatLng(
+                                //           double.parse(
+                                //               widget.lattitude.toString()),
+                                //           double.parse(
+                                //               widget.longitude.toString())),
+                                //       draggable: true,
+                                //       onDragEnd: (value) {
+                                //         // value is the new position
+                                //       },
+                                //       icon: BitmapDescriptor.defaultMarker,
+                                //     ),
+                                //     const Marker(
+                                //       markerId: MarkerId("marker2"),
+                                //       position: LatLng(37.415768808487435,
+                                //           -122.08440050482749),
+                                //     ),
+                                //   },
+                                // ),
                               )
                             : ListView.builder(
                                 itemCount: 6,
@@ -624,8 +634,8 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                       : widget.business_phone,
                   onTap: widget.business_phone.isEmpty
                       ? null
-                      : () => showContactOptions(
-                          context, widget.business_phone),
+                      : () =>
+                          showContactOptions(context, widget.business_phone),
                   isAction: true,
                 ),
               ],
@@ -656,9 +666,8 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                 const SizedBox(height: 10),
                 _detailLine(
                   icon: Icons.map_rounded,
-                  text: customerAdress.isEmpty
-                      ? "-"
-                      : "العنوان: $customerAdress",
+                  text:
+                      customerAdress.isEmpty ? "-" : "العنوان: $customerAdress",
                 ),
                 if (customerNear.isNotEmpty) ...[
                   const SizedBox(height: 6),
@@ -672,8 +681,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                   _detailLine(
                     icon: Icons.phone_rounded,
                     text: consignee_phone1,
-                    onTap: () =>
-                        showContactOptions(context, consignee_phone1),
+                    onTap: () => showContactOptions(context, consignee_phone1),
                     isAction: true,
                   ),
                 if (consignee_phone2.isNotEmpty &&
@@ -682,8 +690,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                   _detailLine(
                     icon: Icons.phone_rounded,
                     text: consignee_phone2,
-                    onTap: () =>
-                        showContactOptions(context, consignee_phone2),
+                    onTap: () => showContactOptions(context, consignee_phone2),
                     isAction: true,
                   ),
                 ],
@@ -701,8 +708,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                 shape: BoxShape.circle,
                 color: const Color(0xFF27AE60).withOpacity(0.12),
                 border: Border.all(
-                    color: const Color(0xFF27AE60).withOpacity(0.4),
-                    width: 2),
+                    color: const Color(0xFF27AE60).withOpacity(0.4), width: 2),
               ),
               child: const Icon(Icons.local_shipping_rounded,
                   color: Color(0xFF27AE60), size: 26),
@@ -731,8 +737,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
                   icon: Icons.payments_rounded,
                   iconColor: const Color(0xFFE67E22),
                   bgColor: const Color(0xFFFFF7E6),
-                  title:
-                      "$total ${AppLocalizations.of(context)!.shekels}",
+                  title: "$total ${AppLocalizations.of(context)!.shekels}",
                   subtitle:
                       AppLocalizations.of(context)!.payement_when_recieving,
                 ),
@@ -837,8 +842,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon,
-            size: 18,
-            color: isAction ? MAINCOLOR : const Color(0xFF7F8C8D)),
+            size: 18, color: isAction ? MAINCOLOR : const Color(0xFF7F8C8D)),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -846,9 +850,7 @@ class _ShipmentDetailState extends State<ShipmentDetail> {
             style: TextStyle(
               fontWeight: isAction ? FontWeight.bold : FontWeight.w500,
               fontSize: 14,
-              color: isAction
-                  ? MAINCOLOR
-                  : const Color(0xFF2C3E50),
+              color: isAction ? MAINCOLOR : const Color(0xFF2C3E50),
               decoration:
                   isAction ? TextDecoration.underline : TextDecoration.none,
             ),
