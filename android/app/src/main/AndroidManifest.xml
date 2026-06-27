@@ -4,6 +4,8 @@
      <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
      <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
      <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+     <uses-permission android:name="android.permission.VIBRATE" />
+     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
    <application
         android:label="J-Food Business"
         android:name="${applicationName}"
@@ -34,11 +36,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- Use the high-importance channel for FCM notifications received in
-             the background so they show as heads-up with sound. -->
+        <!-- Use the loud new-order alarm channel for FCM notifications received
+             in the background so they ring with the order_alarm sound + vibration. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="high_importance_channel" />
+            android:value="new_order_alert_channel" />
             <meta-data android:name="com.google.android.geo.API_KEY"
                android:value="AIzaSyC86lWEI5fMklifz509ZmHUyGpj1AuplUA"/>
     </application>

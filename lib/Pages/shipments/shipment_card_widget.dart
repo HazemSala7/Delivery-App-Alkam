@@ -102,14 +102,8 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
   String get _localTracking =>
       widget.shipment["id"]?.toString() ?? widget.trackingNumber;
 
-  double get _localCod {
-    final parsed = double.tryParse(widget.shipment["total"]?.toString() ??
-            widget.codAmount.toString())! +
-        double.tryParse(
-            widget.shipment["restaurant"]["delivery_price"]?.toString() ??
-                widget.codAmount.toString())!;
-    return parsed;
-  }
+  // المجموع الكلي = مجموع المنتجات + سعر التوصيل + سعر الخدمة (من النظام).
+  double get _localCod => _total + _deliveryPrice + _servicePrice;
 
   double get _total {
     final parsed = double.tryParse(
@@ -119,9 +113,15 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
 
   double get _deliveryPrice {
     final parsed = double.tryParse(
-        widget.shipment["restaurant"]["delivery_price"]?.toString() ??
-            widget.codAmount.toString())!;
-    return parsed;
+        widget.shipment["restaurant"]?["delivery_price"]?.toString() ?? "0");
+    return parsed ?? 0.0;
+  }
+
+  // سعر الخدمة الموجود بالنظام (يُضاف إلى المجموع).
+  double get _servicePrice {
+    final parsed =
+        double.tryParse(widget.shipment["service_price"]?.toString() ?? "0");
+    return parsed ?? 0.0;
   }
 
   bool get _isNewOrder =>
@@ -668,6 +668,7 @@ class _ShipmentCardWidgetState extends State<ShipmentCardWidget> {
                         productsArray: widget.productsArray['items'] ?? [],
                         deliveryPrice: _deliveryPrice,
                         mealsPrice: _total,
+                        servicePrice: _servicePrice,
                       ),
                     );
                   },

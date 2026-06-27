@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:optimus_opost/Pages/login_screen/login_screen.dart';
@@ -24,12 +25,37 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
     FlutterLocalNotificationsPlugin();
 
-const AndroidNotificationChannel highImportanceChannel =
+/// Global navigator key so notification taps (which happen outside any widget
+/// context) can navigate back to the orders screen.
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
+
+/// Tap on a new-order notification → go straight to the orders list (which is
+/// the home screen) and refresh so the order shows with its red countdown.
+void _handleNotificationTap(String? orderId) {
+  try {
+    OrderRefreshBus.ping();
+    final nav = appNavigatorKey.currentState;
+    if (nav != null) {
+      // Pop any pushed screens (detail/route map) back to the orders list.
+      nav.popUntil((route) => route.isFirst);
+    }
+  } catch (_) {}
+}
+
+// Loud, attention-grabbing channel: rings with the order_alarm sound + strong
+// vibration so a distracted driver can't miss a new order. NOTE: a new channel
+// id is used on purpose — Android caches a channel's sound after first creation,
+// so the only way to give existing installs the new alarm sound is a fresh id.
+const AndroidNotificationChannel newOrderAlertChannel =
     AndroidNotificationChannel(
-  'high_importance_channel',
-  'إشعارات الطلبات',
-  description: 'إشعارات طلبات التوصيل الجديدة',
+  'new_order_alert_channel',
+  'تنبيهات الطلبات الجديدة',
+  description: 'تنبيه صوتي عالٍ عند وصول طلب توصيل جديد',
   importance: Importance.max,
+  playSound: true,
+  sound: RawResourceAndroidNotificationSound('order_alarm'),
+  enableVibration: true,
+  audioAttributesUsage: AudioAttributesUsage.alarm,
 );
 
 Future<void> _initLocalNotifications() async {
@@ -39,11 +65,16 @@ Future<void> _initLocalNotifications() async {
     const DarwinInitializationSettings iosInit = DarwinInitializationSettings();
     const InitializationSettings initSettings =
         InitializationSettings(android: androidInit, iOS: iosInit);
-    await flutterLocalNotificationsPlugin.initialize(initSettings);
+    await flutterLocalNotificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse resp) {
+        _handleNotificationTap(resp.payload);
+      },
+    );
     await flutterLocalNotificationsPlugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(highImportanceChannel);
+        ?.createNotificationChannel(newOrderAlertChannel);
   } catch (_) {}
 }
 
@@ -59,15 +90,37 @@ void _showLocalNotification(RemoteMessage message) {
       body,
       NotificationDetails(
         android: AndroidNotificationDetails(
-          highImportanceChannel.id,
-          highImportanceChannel.name,
-          channelDescription: highImportanceChannel.description,
+          newOrderAlertChannel.id,
+          newOrderAlertChannel.name,
+          channelDescription: newOrderAlertChannel.description,
           importance: Importance.max,
-          priority: Priority.high,
+          priority: Priority.max,
           icon: '@mipmap/launcher_icon',
+          playSound: true,
+          sound: const RawResourceAndroidNotificationSound('order_alarm'),
+          audioAttributesUsage: AudioAttributesUsage.alarm,
+          enableVibration: true,
+          vibrationPattern:
+              Int64List.fromList([0, 600, 300, 600, 300, 600, 300, 600]),
+          enableLights: true,
+          ledColor: const Color.fromARGB(255, 255, 0, 0),
+          ledOnMs: 300,
+          ledOffMs: 300,
+          fullScreenIntent: true,
+          category: AndroidNotificationCategory.alarm,
+          visibility: NotificationVisibility.public,
+          ticker: 'طلب جديد!',
         ),
-        iOS: const DarwinNotificationDetails(),
+        iOS: const DarwinNotificationDetails(
+          sound: 'order_alarm.wav',
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+          interruptionLevel: InterruptionLevel.critical,
+        ),
       ),
+      // order_id payload so tapping the notification opens the order.
+      payload: message.data['order_id']?.toString(),
     );
   } catch (_) {}
 }
@@ -138,7 +191,8 @@ class Optimus extends StatefulWidget {
 
 class _OptimusState extends State<Optimus> {
   Locale locale = const Locale("ar", "AE");
-  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+  // Use the shared global key so notification taps can navigate too.
+  final GlobalKey<NavigatorState> navigatorKey = appNavigatorKey;
   // DISABLED: Firebase references
   // late final FirebaseAnalytics? analytics;
   // late final FirebaseAnalyticsObserver? observer;
@@ -231,14 +285,17 @@ class _OptimusState extends State<Optimus> {
         }
       });
 
+      // Tapping the notification while the app is in the background → open the
+      // order directly (go to the orders list + refresh), no popup.
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        OrderRefreshBus.ping();
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _showFancyOrderAlert(
-            title: message.notification?.title ?? 'طلب جديد للتوصيل',
-            body: message.notification?.body ?? '',
-          );
-        });
+        _handleNotificationTap(message.data['order_id']?.toString());
+      });
+
+      // App launched from terminated state by tapping the notification.
+      FirebaseMessaging.instance.getInitialMessage().then((message) {
+        if (message != null) {
+          _handleNotificationTap(message.data['order_id']?.toString());
+        }
       });
     } catch (e) {
       print("setupFirebaseMessaging skipped: $e");

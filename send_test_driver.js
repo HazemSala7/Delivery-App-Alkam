@@ -26,14 +26,25 @@ const title = process.argv[3] || 'طلب توصيل جديد 🚚'
 const body = process.argv[4] || 'لديك طلب جديد — افتح التطبيق لعرض التفاصيل.'
 const topic = `driver_${salesmanId}`
 
+const orderId = process.argv[5] || '999999'
+
 const message = {
   topic,
   notification: { title, body },
   android: {
     priority: 'high',
-    notification: { sound: 'default', channelId: 'high_importance_channel' },
+    notification: {
+      sound: 'order_alarm', // loud 2s alarm tone (res/raw/order_alarm.wav)
+      channelId: 'new_order_alert_channel',
+      clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+    },
   },
-  apns: { payload: { aps: { sound: 'default', badge: 1 } } },
+  apns: {
+    headers: { 'apns-priority': '10' },
+    payload: { aps: { sound: 'order_alarm.wav', badge: 1 } },
+  },
+  // order_id so tapping the notification opens the order.
+  data: { order_id: String(orderId), type: 'new_order' },
 }
 
 admin

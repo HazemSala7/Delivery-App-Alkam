@@ -2,7 +2,7 @@ name: optimus_opost
 description: A new Flutter project.
 publish_to: "none"
 
-version: 1.18.4+23
+version: 1.21.4+26
 
 environment:
   sdk: ">=3.4.0 <4.0.0"

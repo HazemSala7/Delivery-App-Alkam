@@ -70,6 +70,10 @@ class _ShipmentsState extends State<Shipments> {
   // DISABLED: flutter_tts - plugin disabled
   // final FlutterTts _tts = FlutterTts();
   final AudioPlayer _alertPlayer = AudioPlayer();
+  // True while the loud looping new-order alarm is ringing.
+  bool _alarmPlaying = false;
+  // Safety stop so the alarm can never get stuck ringing forever.
+  Timer? _alarmSafetyTimer;
   bool _ttsReady = false;
   bool _isFetching = false;
   bool _isAppInForeground = true;
@@ -170,34 +174,87 @@ class _ShipmentsState extends State<Shipments> {
     _isAppInForeground = false;
   }
 
-  /// Plays a sound + speaks an Arabic announcement + buzzes the phone.
+  /// Entry point when a brand-new order arrives: start the loud looping alarm.
   Future<void> _announceNewOrder({String? orderId}) async {
+    await _startAlarmLoop();
+  }
+
+  /// Starts a LOUD, looping alarm on the device ALARM stream (bypasses the
+  /// media/ringer volume so it's heard even if the phone is on silent) plus a
+  /// continuous strong vibration — so a distracted driver can't miss it.
+  /// It keeps ringing until the order is accepted/rejected (queue empties) or
+  /// the safety timeout fires.
+  Future<void> _startAlarmLoop() async {
+    if (_alarmPlaying) return; // already ringing — don't stack
+    _alarmPlaying = true;
+
     try {
       HapticFeedback.heavyImpact();
     } catch (_) {}
-    // System alert chime (works without any asset).
-    try {
-      SystemSound.play(SystemSoundType.alert);
-    } catch (_) {}
-    // Try a louder asset chime if user provided one.
+
     try {
       await _alertPlayer.stop();
-      await _alertPlayer.play(AssetSource('notification.mp3'), volume: 1.0);
-    } catch (_) {
-      // No asset is fine — TTS will still announce.
+      await _alertPlayer.setReleaseMode(ReleaseMode.loop);
+      await _alertPlayer.setAudioContext(
+        AudioContext(
+          android: const AudioContextAndroid(
+            isSpeakerphoneOn: true,
+            stayAwake: true,
+            contentType: AndroidContentType.sonification,
+            usageType: AndroidUsageType.alarm, // ALARM stream = loud
+            audioFocus: AndroidAudioFocus.gainTransientMayDuck,
+          ),
+          iOS: AudioContextIOS(
+            category: AVAudioSessionCategory.playback,
+            options: const {AVAudioSessionOptions.duckOthers},
+          ),
+        ),
+      );
+      await _alertPlayer.play(AssetSource('order_alarm.wav'), volume: 1.0);
+    } catch (e) {
+      debugPrint("alarm play failed: $e");
+      // Fallback chime so we still alert even if the asset/context fails.
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
     }
-    // DISABLED: flutter_tts - plugin disabled
-    // if (_ttsReady) {
-    //   try {
-    //     await _tts.stop();
-    //     final msg = orderId == null
-    //         ? "لديك طلب جديد"
-    //         : "لديك طلب جديد رقم $orderId";
-    //     await _tts.speak(msg);
-    //   } catch (e) {
-    //     debugPrint("TTS speak failed: $e");
-    //   }
-    // }
+
+    _startContinuousVibration();
+
+    // Hard safety cap: never let the alarm ring longer than the accept window.
+    _alarmSafetyTimer?.cancel();
+    _alarmSafetyTimer = Timer(const Duration(seconds: 25), () {
+      _stopAlarm();
+    });
+  }
+
+  /// Buzzes the phone repeatedly while the alarm is ringing.
+  void _startContinuousVibration() async {
+    while (_alarmPlaying) {
+      try {
+        HapticFeedback.heavyImpact();
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 700));
+    }
+  }
+
+  /// Stops the alarm sound + vibration.
+  Future<void> _stopAlarm() async {
+    if (!_alarmPlaying) return;
+    _alarmPlaying = false;
+    _alarmSafetyTimer?.cancel();
+    _alarmSafetyTimer = null;
+    try {
+      await _alertPlayer.stop();
+    } catch (_) {}
+  }
+
+  /// Keeps the alarm in sync with the queue: ring while there are new orders
+  /// awaiting accept/reject, and stop the moment none remain.
+  void _syncAlarmWithQueue() {
+    if (_newShipmentsQueue.isEmpty) {
+      _stopAlarm();
+    }
   }
 
   /// Restore/hydrate any delivery-button hide timers previously saved in prefs.
@@ -273,6 +330,8 @@ class _ShipmentsState extends State<Shipments> {
     OrderRefreshBus.tick.removeListener(_onPushRefresh);
     _autoRejectTimers.forEach((_, t) => t.cancel());
     _hideButtonTimers.forEach((_, t) => t.cancel());
+    _alarmPlaying = false;
+    _alarmSafetyTimer?.cancel();
     // DISABLED: flutter_tts - plugin disabled
     // try {
     //   _tts.stop();
@@ -465,6 +524,9 @@ class _ShipmentsState extends State<Shipments> {
           _lastUpdatedAt = DateTime.now();
         });
 
+        // Stop the alarm if no new orders are awaiting accept/reject anymore.
+        _syncAlarmWithQueue();
+
 // push to stream (new first)
         if (!_streamController.isClosed) {
           _streamController.add([..._newShipmentsQueue, ..._activeShipments]);
@@ -511,6 +573,9 @@ class _ShipmentsState extends State<Shipments> {
         _autoRejectTimers[shipmentId]?.cancel();
         _autoRejectTimers.remove(shipmentId);
         await _removePendingAutoReject(shipmentId);
+
+        // The driver acted on the order — silence the alarm immediately.
+        await _stopAlarm();
 
         // persist that it's seen/confirmed (accepted)
         await _markSeenId(shipmentId);
@@ -671,6 +736,9 @@ class _ShipmentsState extends State<Shipments> {
                 .removeWhere((s) => s["id"].toString() == shipmentId);
           });
         }
+
+        // Silence the alarm if this was the last pending new order.
+        _syncAlarmWithQueue();
 
         if (!_streamController.isClosed) {
           _streamController.add([..._newShipmentsQueue, ..._activeShipments]);
@@ -1653,14 +1721,15 @@ class _LifecycleHook with WidgetsBindingObserver {
 }
 
 class ProductDetailsBottomSheet extends StatelessWidget {
-  var productsArray, total, deliveryPrice, mealsPrice;
+  var productsArray, total, deliveryPrice, mealsPrice, servicePrice;
 
   ProductDetailsBottomSheet(
       {super.key,
       required this.productsArray,
       required this.total,
       required this.deliveryPrice,
-      required this.mealsPrice});
+      required this.mealsPrice,
+      this.servicePrice = 0});
 
   @override
   Widget build(BuildContext context) {
@@ -1707,6 +1776,15 @@ class ProductDetailsBottomSheet extends StatelessWidget {
                   ),
                   Text(
                     "الطلبية : ${mealsPrice} ",
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Text(
+                    "الخدمة : ${servicePrice} ",
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.bold),
                   ),
